@@ -5,6 +5,8 @@ project(Amigurumi_designer VERSION 0.1.0 LANGUAGES C CXX)
 set( PRJ_LIBRARIES imgui::imgui)
 find_package(imgui CONFIG REQUIRED)
 
+find_package(OpenGL REQUIRED)
+
 #include_directories("${imgui_INCLUDE_DIR}")
 
 include(CTest)
@@ -13,6 +15,7 @@ enable_testing()
 add_executable(Amigurumi_designer main.cpp)
 
 target_link_libraries(Amigurumi_designer PRIVATE imgui::imgui)
+target_link_libraries(Amigurumi_designer PRIVATE OpenGL)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION}) 
