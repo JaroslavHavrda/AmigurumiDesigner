@@ -25,6 +25,20 @@ class SDL
     }
 };
 
+class SDL_GLContext_Holder
+{
+    public:
+    SDL_GLContext gl_context;
+    SDL_GLContext_Holder( SDL_Window* window)
+    {
+        gl_context = SDL_GL_CreateContext(window);
+    }
+    ~SDL_GLContext_Holder()
+    {
+        SDL_GL_DeleteContext(gl_context);
+    }
+};
+
 // Main code
 int main(int, char**)
 {
@@ -50,8 +64,8 @@ int main(int, char**)
         return -1;
     }
 
-    SDL_GLContext gl_context = SDL_GL_CreateContext(window);
-    SDL_GL_MakeCurrent(window, gl_context);
+    SDL_GLContext_Holder gl_context{window};
+    SDL_GL_MakeCurrent(window, gl_context.gl_context);
     SDL_GL_SetSwapInterval(1); // Enable vsync
 
     // Setup Dear ImGui context
@@ -66,7 +80,7 @@ int main(int, char**)
     //ImGui::StyleColorsLight();
 
     // Setup Platform/Renderer backends
-    ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
+    ImGui_ImplSDL2_InitForOpenGL(window, gl_context.gl_context);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Load Fonts
@@ -176,7 +190,6 @@ int main(int, char**)
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
 
-    SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
 
     return 0;
