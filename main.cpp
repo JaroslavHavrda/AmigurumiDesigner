@@ -39,6 +39,19 @@ class SDL_GLContext_Holder
     }
 };
 
+class Imgui_Context_Holder
+{
+    public:
+    Imgui_Context_Holder()
+    {
+        ImGui::CreateContext();
+    }
+    ~Imgui_Context_Holder()
+    {
+        ImGui::DestroyContext();
+    }
+};
+
 // Main code
 int main(int, char**)
 {
@@ -70,7 +83,7 @@ int main(int, char**)
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    Imgui_Context_Holder imgui_context;
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
@@ -188,7 +201,6 @@ int main(int, char**)
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
-    ImGui::DestroyContext();
 
     SDL_DestroyWindow(window);
 
