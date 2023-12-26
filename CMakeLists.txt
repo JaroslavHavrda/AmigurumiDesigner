@@ -7,6 +7,12 @@ find_package(imgui CONFIG REQUIRED)
 
 find_package(OpenGL REQUIRED)
 
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
 #include_directories("${imgui_INCLUDE_DIR}")
 
 include(CTest)
