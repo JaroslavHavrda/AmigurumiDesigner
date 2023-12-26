@@ -133,6 +133,12 @@ bool should_quit( SDL_Window * window)
     return false;
 }
 
+void setup_sdl(SDL_Window * window, SDL_GLContext & gl_context)
+{
+    SDL_GL_MakeCurrent(window, gl_context);
+    SDL_GL_SetSwapInterval(1);
+}
+
 // Main code
 int main(int, char**)
 {
@@ -140,10 +146,9 @@ int main(int, char**)
     set_sdl_attributes();
     
     window_holder window;
-
     SDL_GLContext_Holder gl_context{window.sdl_window()};
-    SDL_GL_MakeCurrent(window.sdl_window(), gl_context.gl_context);
-    SDL_GL_SetSwapInterval(1); // Enable vsync
+
+    setup_sdl(window.sdl_window(), gl_context.gl_context);
 
     IMGUI_CHECKVERSION();
     Imgui_Context_Holder imgui_context;
@@ -164,18 +169,10 @@ int main(int, char**)
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        {
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-            ImGui::SameLine();
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-            ImGui::End();
-        }
+        ImGui::Begin("Hello, world!");
+ 
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+        ImGui::End();
 
         // Rendering
         ImGui::Render();
