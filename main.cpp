@@ -139,7 +139,35 @@ void setup_sdl(SDL_Window * window, SDL_GLContext & gl_context)
     SDL_GL_SetSwapInterval(1);
 }
 
-// Main code
+ImGuiIO& setup_imgui()
+{
+    IMGUI_CHECKVERSION();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    ImGui::StyleColorsDark();
+    return io;
+}
+
+class imput_controls{
+    public:
+    void draw_controls()
+    {
+        ImGui::NewFrame();
+        ImGui::Begin("Amigurumi prescription");
+        ImGui::End();
+        ImGui::Render();
+    }
+};
+
+void draw_result( ImGuiIO&  io)
+{
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+    glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
 int main(int, char**)
 {
     SDL s;
@@ -149,42 +177,24 @@ int main(int, char**)
     SDL_GLContext_Holder gl_context{window.sdl_window()};
 
     setup_sdl(window.sdl_window(), gl_context.gl_context);
-
-    IMGUI_CHECKVERSION();
     Imgui_Context_Holder imgui_context;
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-    ImGui::StyleColorsDark();
+    auto io = setup_imgui();
 
     imgui_impl_opengl3 imgul_opemngl(window.sdl_window(), gl_context.gl_context);
     imgui_impl_sdl2 imgui_sdl;
 
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    imput_controls input;
 
     while (!should_quit(window.sdl_window()))
     {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
 
-        ImGui::Begin("Hello, world!");
- 
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-        ImGui::End();
-
-        // Rendering
-        ImGui::Render();
-        glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
+        input.draw_controls();
+        draw_result(io);
+        
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window.sdl_window());
     }
-#ifdef __EMSCRIPTEN__
-    EMSCRIPTEN_MAINLOOP_END;
-#endif
-
     return 0;
 }
