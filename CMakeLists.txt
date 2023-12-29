@@ -18,6 +18,12 @@ endif()
 include(CTest)
 enable_testing()
 
+# search for clang-tidy
+find_program(CLANG_TIDY_EXE NAMES "clang-tidy" REQUIRED)
+
+# setup clang-tidy command from executable + options
+set(CLANG_TIDY_COMMAND "${CLANG_TIDY_EXE}" "-checks=-*,modernize-*")
+
 set(CMAKE_CXX_CPPCHECK "cppcheck")
 
 add_executable(Amigurumi_designer main.cpp)
