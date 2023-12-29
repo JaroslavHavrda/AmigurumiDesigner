@@ -18,6 +18,8 @@ endif()
 include(CTest)
 enable_testing()
 
+set(CMAKE_CXX_CPPCHECK "cppcheck")
+
 add_executable(Amigurumi_designer main.cpp)
 
 target_link_libraries(Amigurumi_designer PRIVATE imgui::imgui)
