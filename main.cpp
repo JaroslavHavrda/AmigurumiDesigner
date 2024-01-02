@@ -1,3 +1,4 @@
+#include "include/SDL_wrappers.h"
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
@@ -6,24 +7,6 @@
 #include <SDL_opengl.h>
 #include <sstream>
 #include <exception>
-
-class SDL
-{
-    public:
-    SDL()
-    {
-        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
-        {
-            std::stringstream ss;
-            ss << "Error: " << SDL_GetError();
-            throw std::runtime_error(ss.str());
-        }
-    }
-    ~SDL()
-    {
-        SDL_Quit();
-    }
-};
 
 class SDL_GLContext_Holder
 {
