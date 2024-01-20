@@ -133,11 +133,13 @@ ImGuiIO& setup_imgui()
 }
 
 class imput_controls{
+    char amigurimi_prescription[200];
     public:
     void draw_controls()
     {
         ImGui::NewFrame();
         ImGui::Begin("Amigurumi prescription");
+        ImGui::InputTextMultiline("prescription", amigurimi_prescription, sizeof(amigurimi_prescription));
         ImGui::End();
         ImGui::Render();
     }
