@@ -181,7 +181,7 @@ void setup_imgui()
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
     // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
+    ImGui::StyleColorsLight();
 }
 
 struct imgui_win32_holder
@@ -341,7 +341,7 @@ vertex_representation calc_vertices()
             {DirectX::XMFLOAT3{0.5f,-0.5f,-0.5f}, DirectX::XMFLOAT3{1,   0,   0}, },
             {DirectX::XMFLOAT3{0.5f,-0.5f, 0.5f}, DirectX::XMFLOAT3{1,   0,   1}, },
             {DirectX::XMFLOAT3{0.5f, 0.5f,-0.5f}, DirectX::XMFLOAT3{1,   1,   0}, },
-            {DirectX::XMFLOAT3{0.5f, 0.5f, 0.5f}, DirectX::XMFLOAT3{1,   1,   1},},
+            {DirectX::XMFLOAT3{0.5f, 0.5f, 0.5f}, DirectX::XMFLOAT3{0,   0,   0},},
         },
         std::vector<unsigned short>
         {
@@ -542,7 +542,7 @@ int main(int, char**)
 		const float clear_color_with_alpha[4] = {clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w};
 		app.d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(1, app.target_view->g_mainRenderTargetView.GetAddressOf(), nullptr);
 		app.d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(app.target_view->g_mainRenderTargetView.Get(), clear_color_with_alpha);
-		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+		
 
         vertex_representation vertices = calc_vertices();
         auto vertex_buffer = create_vertex_buffer(vertices.CubeVertices, app.d3dDevice.g_pd3dDevice.Get());
@@ -660,6 +660,8 @@ int main(int, char**)
 			0,
 			0
 		);
+
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
         // Present
         HRESULT hr = app.d3dDevice.g_pSwapChain->Present(1, 0);   // Present with vsync
