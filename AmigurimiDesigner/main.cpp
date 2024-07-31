@@ -494,26 +494,55 @@ struct application_basics
     }
 };
 
+struct imgui_holder
+{
+    imgui_context_holder imgui_context;
+    imgui_win32_holder imgui_win32;
+    imgui_dx11_holder imgui_dx11;
+
+    imgui_holder(application_basics& app):
+        imgui_context{},
+        imgui_win32{ app.window.hwnd },
+        imgui_dx11{ app.d3dDevice.g_pd3dDevice.Get(), app.d3dDevice.g_pd3dDeviceContext.Get() }
+    {
+
+    }
+};
+
+struct gui_wrapper
+{
+    std::array<char, 500> prescription{ 0 };
+
+    void present_using_imgui()
+    {
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+        ImGui::Begin("Amigurumi designer");
+        ImGui::InputTextMultiline("Prescription", prescription.data(), prescription.size());
+        ImGui::End();
+        ImGui::Render();
+    }
+};
+
 // Main code
 int main(int, char**)
 {
     application_basics app;
     app.window.show_window();
     IMGUI_CHECKVERSION();
-    imgui_context_holder imgui_context;
+    imgui_holder imgui_instance{ app };
     setup_imgui();
-    imgui_win32_holder imgui_win32{ app.window.hwnd };
-    imgui_dx11_holder imgui_dx11 {app.d3dDevice.g_pd3dDevice.Get(), app.d3dDevice.g_pd3dDeviceContext.Get() };
     vertex_shader_holder vertex_shader = load_vertex_shader(app.d3dDevice.g_pd3dDevice.Get());
     auto pixel_shader = load_pixel_shader( app.d3dDevice.g_pd3dDevice.Get());
     auto constant_buffer = create_constant_buffer( app.d3dDevice.g_pd3dDevice.Get());
+    gui_wrapper gui;
         
     // Main loop
     while (true)
     {
         if (process_messages())
             break;
-
         if (app.d3dDevice.g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
         {
             ::Sleep(10);
@@ -526,16 +555,7 @@ int main(int, char**)
             g_ResizeWidth = g_ResizeHeight = 0;
         }
                                         
-        {
-            ImGui_ImplDX11_NewFrame();
-            ImGui_ImplWin32_NewFrame();
-            ImGui::NewFrame();
-            std::array<char, 500> prescription{0};
-            ImGui::Begin("Amigurumi designer");
-			ImGui::InputTextMultiline("Prescription", prescription.data(), prescription.size());
-			ImGui::End();
-            ImGui::Render();
-		}
+        gui.present_using_imgui();
 
 		// Rendering
         const ImVec4 clear_color{ 0.45f, 0.55f, 0.60f, 1.00f };
