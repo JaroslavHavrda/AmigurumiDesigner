@@ -525,6 +525,12 @@ struct gui_wrapper
     }
 };
 
+struct frame_resources
+{
+    Microsoft::WRL::ComPtr <ID3D11Buffer> vertex_buffer;
+    Microsoft::WRL::ComPtr <ID3D11Buffer> index_buffer;
+};
+
 // Main code
 int main(int, char**)
 {
@@ -537,8 +543,6 @@ int main(int, char**)
     auto pixel_shader = load_pixel_shader( app.d3dDevice.g_pd3dDevice.Get());
     auto constant_buffer = create_constant_buffer( app.d3dDevice.g_pd3dDevice.Get());
     gui_wrapper gui;
-        
-    // Main loop
     while (true)
     {
         if (process_messages())
@@ -548,25 +552,18 @@ int main(int, char**)
             ::Sleep(10);
             continue;
         }
-
         if (g_ResizeWidth != 0 && g_ResizeHeight != 0)
         {
             app.update_after_resize();
             g_ResizeWidth = g_ResizeHeight = 0;
-        }
-                                        
+        }                             
         gui.present_using_imgui();
-
-		// Rendering
-        const ImVec4 clear_color{ 0.45f, 0.55f, 0.60f, 1.00f };
-		const float clear_color_with_alpha[4] = {clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w};
-		app.d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(1, app.target_view->g_mainRenderTargetView.GetAddressOf(), nullptr);
-		app.d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(app.target_view->g_mainRenderTargetView.Get(), clear_color_with_alpha);
-		
-
         vertex_representation vertices = calc_vertices();
-        auto vertex_buffer = create_vertex_buffer(vertices.CubeVertices, app.d3dDevice.g_pd3dDevice.Get());
-        auto index_buffer = create_index_buffer(vertices.CubeIndices, app.d3dDevice.g_pd3dDevice.Get());
+
+        frame_resources freme_res{
+            .vertex_buffer = create_vertex_buffer(vertices.CubeVertices, app.d3dDevice.g_pd3dDevice.Get()),
+            .index_buffer = create_index_buffer(vertices.CubeIndices, app.d3dDevice.g_pd3dDevice.Get())
+        };
         UINT m_indexCount = (UINT)vertices.CubeIndices.size();
         auto constant_struct = calculate_projections(app.target_view->m_bbDesc);
 
@@ -580,11 +577,11 @@ int main(int, char**)
 		);
 
 		// Clear the render target and the z-buffer.
-		/*const float teal[] = {0.098f, 0.439f, 0.439f, 1.000f};
+		const float teal[] = {0.098f, 0.439f, 0.439f, 1.000f};
 		app.d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
 			app.target_view->g_mainRenderTargetView.Get(),
 			teal
-		);*/
+		);
 
         Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
         Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
@@ -637,13 +634,13 @@ int main(int, char**)
 		app.d3dDevice.g_pd3dDeviceContext->IASetVertexBuffers(
 			0,
 			1,
-			vertex_buffer.GetAddressOf(),
+			freme_res.vertex_buffer.GetAddressOf(),
 			&stride,
 			&offset
 		);
 
 		app.d3dDevice.g_pd3dDeviceContext->IASetIndexBuffer(
-			index_buffer.Get(),
+			freme_res.index_buffer.Get(),
 			DXGI_FORMAT_R16_UINT,
 			0
 		);
