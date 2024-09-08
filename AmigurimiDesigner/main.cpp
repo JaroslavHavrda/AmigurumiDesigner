@@ -410,7 +410,14 @@ Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(std::vector<unsigned s
     return m_pIndexBuffer;
 }
 
-ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
+struct rotation_data_gui
+{
+    float roll{ 0 };
+    float pitch{ 0 };
+    float yaw{ 0 };
+};
+
+ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc, const rotation_data_gui & rot)
 {
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 0.7f, 1.5f, 0.f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
@@ -447,9 +454,15 @@ ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
     DirectX::XMStoreFloat4x4(
         &m_constantBufferData.world,
         DirectX::XMMatrixTranspose(
-            DirectX::XMMatrixRotationY(
+            DirectX::XMMatrixRotationRollPitchYaw(
                 DirectX::XMConvertToRadians(
-                    (float)0
+                    rot.pitch
+                ),
+                DirectX::XMConvertToRadians(
+                    rot.yaw
+                ),
+                DirectX::XMConvertToRadians(
+                    rot.roll
                 )
             )
         )
@@ -512,6 +525,7 @@ struct imgui_holder
 struct gui_wrapper
 {
     std::array<char, 500> prescription{ 0 };
+    rotation_data_gui rotation;
 
     void present_using_imgui()
     {
@@ -521,7 +535,13 @@ struct gui_wrapper
         ImGui::Begin("Amigurumi designer");
         ImGui::InputTextMultiline("Prescription", prescription.data(), prescription.size());
         ImGui::End();
-        ImGui::Render();
+        ImGui::Begin("Rotation");
+        ImGui::InputFloat("roll", &(rotation.roll));
+        ImGui::InputFloat("pitch", &(rotation.pitch));
+        ImGui::InputFloat("yaw", &(rotation.yaw));
+        ImGui::Button("reset");
+        ImGui::End();
+        ImGui::Render();  
     }
 };
 
@@ -529,6 +549,7 @@ struct frame_resources
 {
     Microsoft::WRL::ComPtr <ID3D11Buffer> vertex_buffer;
     Microsoft::WRL::ComPtr <ID3D11Buffer> index_buffer;
+    UINT m_indexCount;
 };
 
 // Main code
@@ -562,10 +583,10 @@ int main(int, char**)
 
         frame_resources freme_res{
             .vertex_buffer = create_vertex_buffer(vertices.CubeVertices, app.d3dDevice.g_pd3dDevice.Get()),
-            .index_buffer = create_index_buffer(vertices.CubeIndices, app.d3dDevice.g_pd3dDevice.Get())
+            .index_buffer = create_index_buffer(vertices.CubeIndices, app.d3dDevice.g_pd3dDevice.Get()),
+            .m_indexCount = (UINT)vertices.CubeIndices.size()
         };
-        UINT m_indexCount = (UINT)vertices.CubeIndices.size();
-        auto constant_struct = calculate_projections(app.target_view->m_bbDesc);
+        auto constant_struct = calculate_projections(app.target_view->m_bbDesc, gui.rotation);
 
 		app.d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
 			constant_buffer.Get(),
@@ -673,7 +694,7 @@ int main(int, char**)
 
 		// Calling Draw tells Direct3D to start sending commands to the graphics device.
 		app.d3dDevice.g_pd3dDeviceContext->DrawIndexed(
-			m_indexCount,
+			freme_res.m_indexCount,
 			0,
 			0
 		);
