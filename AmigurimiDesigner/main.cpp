@@ -225,7 +225,7 @@ struct vertex_shader_holder
 vertex_shader_holder load_vertex_shader(ID3D11Device* g_pd3dDevice)
 {
     vertex_shader_holder vs;
-	std::ifstream vShader{ "C:\\Users\\Nikola\\Documents\\repos\\AmigurumiDesigner\\AmigurimiDesigner\\x64\\Debug\\VertexShader.cso",
+	std::ifstream vShader{ "VertexShader.cso",
         std::ios::binary };
 	std::vector<char> fileContents((std::istreambuf_iterator<char>(vShader)),
 		std::istreambuf_iterator<char>());
@@ -268,7 +268,7 @@ vertex_shader_holder load_vertex_shader(ID3D11Device* g_pd3dDevice)
 Microsoft::WRL::ComPtr <ID3D11PixelShader> load_pixel_shader(ID3D11Device* g_pd3dDevice)
 {
     Microsoft::WRL::ComPtr <ID3D11PixelShader> m_pPixelShader;
-	std::ifstream pShader{ "C:\\Users\\Nikola\\Documents\\repos\\AmigurumiDesigner\\AmigurimiDesigner\\x64\\Debug\\PixelShader.cso",  std::ios::binary };
+	std::ifstream pShader{ "PixelShader.cso",  std::ios::binary };
 	std::vector<char> fileContents((std::istreambuf_iterator<char>(pShader)),
 		std::istreambuf_iterator<char>());
 
