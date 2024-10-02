@@ -539,7 +539,11 @@ struct gui_wrapper
         ImGui::InputFloat("roll", &(rotation.roll));
         ImGui::InputFloat("pitch", &(rotation.pitch));
         ImGui::InputFloat("yaw", &(rotation.yaw));
-        ImGui::Button("reset");
+        if (ImGui::Button("Reset")) {
+            rotation.roll = 0;
+            rotation.pitch = 0;
+            rotation.yaw = 0;
+        }
         ImGui::End();
         ImGui::Render();  
     }
