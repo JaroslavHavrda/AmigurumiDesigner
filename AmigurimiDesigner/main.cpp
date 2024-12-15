@@ -4,6 +4,8 @@
 #include <d3d11.h>
 #include <directxmath.h>
 #include <wrl\client.h>
+#include <Windows.h>
+#include <windowsx.h>
 #include <tchar.h>
 #include <stdexcept>
 #include <array>
@@ -11,11 +13,77 @@
 #include <optional>
 #include <vector>
 #include <fstream>
+#include <iostream>
 // Data
 static UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+struct MousePosition
+{
+    int x = 0;
+    int y = 0;
+};
+
+struct ViewportConfigurationManager
+{
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 0.7f, 1.5f, 0.f);
+    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+    DirectX::XMVECTOR rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
+
+    MousePosition current_pos;
+    MousePosition drag_start;
+    bool dragging = false;
+
+    DirectX::XMVECTOR calc_eye() const
+    {
+        using namespace DirectX;
+        if (!dragging)
+        {
+            return eye;
+        }
+        auto center_direction = eye - rotation_center;
+        auto distance = XMVector3Length(center_direction);
+        auto normalized_direction = XMVector3Normalize(center_direction);
+        float y_diff = (float)current_pos.y - drag_start.y;
+        float x_diff = (float)current_pos.x - drag_start.x;
+        auto left = XMVector3Normalize( XMVector3Cross(up, normalized_direction));
+        auto real_up = XMVector3Cross(normalized_direction, left);
+        auto final_direction = normalized_direction + y_diff/500 * real_up - x_diff/500 * left;
+        auto normalized_resulting_direction = XMVector3Normalize(final_direction);
+
+        return rotation_center + distance * normalized_resulting_direction;
+    }
+
+    DirectX::XMVECTOR calc_up() const
+    {
+        using namespace DirectX;
+        if (!dragging)
+        {
+            return up;
+        }
+        auto original_direction = eye - rotation_center;
+        auto left = -XMVector3Cross(original_direction, up);
+        auto new_eye = calc_eye();
+        auto new_diraction = new_eye - rotation_center;
+        auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
+        return new_up;
+        //return up;
+    }
+
+    void stop_dragging()
+    {
+        auto new_eye = calc_eye();
+        auto new_up = calc_up();
+        eye = new_eye;
+        up = new_up;
+        dragging = false;
+    }
+};
+
+ViewportConfigurationManager viewport_config;
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -36,6 +104,27 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         break;
     case WM_DESTROY:
         ::PostQuitMessage(0);
+        return 0;
+    case WM_LBUTTONDOWN:
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.WantCaptureMouse)
+        {
+            return 0;
+        }
+        viewport_config.current_pos.x = GET_X_LPARAM(lParam);
+        viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
+        viewport_config.drag_start.x = GET_X_LPARAM(lParam);
+        viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
+        viewport_config.dragging = true;
+        return 0;
+    }
+    case WM_MOUSEMOVE:
+        viewport_config.current_pos.x = GET_X_LPARAM(lParam);
+        viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
+        return 0;
+    case WM_LBUTTONUP:
+        viewport_config.stop_dragging();
         return 0;
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
@@ -419,19 +508,15 @@ struct rotation_data_gui
 
 ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc, const rotation_data_gui & rot)
 {
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 0.7f, 1.5f, 0.f);
-    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
-    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-
     ConstantBufferStruct m_constantBufferData{};
 
     DirectX::XMStoreFloat4x4(
         &m_constantBufferData.view,
         DirectX::XMMatrixTranspose(
             DirectX::XMMatrixLookAtRH(
-                eye,
-                at,
-                up
+                viewport_config.calc_eye(),
+                viewport_config.at,
+                viewport_config.calc_up()
             )
         )
     );
@@ -505,6 +590,15 @@ struct application_basics
         }
         target_view = init_render_target_view(d3dDevice);
     }
+
+    void clear_render_target_view()
+    {
+        const float teal[] = { 0.098f, 0.439f, 0.439f, 1.000f };
+        d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
+            target_view->g_mainRenderTargetView.Get(),
+            teal
+        );
+    }
 };
 
 struct imgui_holder
@@ -556,6 +650,116 @@ struct frame_resources
     UINT m_indexCount;
 };
 
+frame_resources prepare_frame_resources(const vertex_representation & vertices, Microsoft::WRL::ComPtr<ID3D11Device> & g_pd3dDevice)
+{
+    return {
+            .vertex_buffer = create_vertex_buffer(vertices.CubeVertices, g_pd3dDevice.Get()),
+            .index_buffer = create_index_buffer(vertices.CubeIndices, g_pd3dDevice.Get()),
+            .m_indexCount = (UINT)vertices.CubeIndices.size(),
+    };
+}
+
+void update_constant_struct(D3D11_TEXTURE2D_DESC &m_bbDesc, const rotation_data_gui & rotation, Microsoft::WRL::ComPtr <ID3D11Buffer> &constant_buffer,
+    Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext)
+{
+    auto constant_struct = calculate_projections(m_bbDesc, rotation);
+
+   g_pd3dDeviceContext->UpdateSubresource(
+        constant_buffer.Get(),
+        0,
+        nullptr,
+        &(constant_struct),
+        0,
+        0
+    );
+}
+
+Microsoft::WRL::ComPtr <ID3D11Texture2D> create_depth_stencil(D3D11_TEXTURE2D_DESC& m_bbDesc, Microsoft::WRL::ComPtr<ID3D11Device> g_pd3dDevice)
+{
+    Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
+    CD3D11_TEXTURE2D_DESC depthStencilDesc(
+        DXGI_FORMAT_D24_UNORM_S8_UINT,
+        static_cast<UINT> (m_bbDesc.Width),
+        static_cast<UINT> (m_bbDesc.Height),
+        1, // This depth stencil view has only one texture.
+        1, // Use a single mipmap level.
+        D3D11_BIND_DEPTH_STENCIL
+    );
+
+    HRESULT res = g_pd3dDevice->CreateTexture2D(
+        &depthStencilDesc,
+        nullptr,
+        m_pDepthStencil.GetAddressOf()
+    );
+
+    if (res != S_OK)
+    {
+        throw std::runtime_error("could not create depth stencil");
+    }
+    return m_pDepthStencil;
+}
+
+Microsoft::WRL::ComPtr <ID3D11DepthStencilView> create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Device>& g_pd3dDevice, Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil)
+{
+    Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
+    CD3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc(D3D11_DSV_DIMENSION_TEXTURE2D);
+
+    HRESULT hr = g_pd3dDevice->CreateDepthStencilView(
+        m_pDepthStencil.Get(),
+        &depthStencilViewDesc,
+        m_pDepthStencilView.GetAddressOf()
+    );
+
+    if (hr != S_OK)
+    {
+        throw std::runtime_error("could not create depth stencil view");
+    }
+    return m_pDepthStencilView;
+}
+
+void set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DeviceContext> & g_pd3dDeviceContext, Microsoft::WRL::ComPtr <ID3D11DepthStencilView> & m_pDepthStencilView,
+    Microsoft::WRL::ComPtr <ID3D11RenderTargetView> & g_mainRenderTargetView)
+{
+    g_pd3dDeviceContext->ClearDepthStencilView(
+        m_pDepthStencilView.Get(),
+        D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
+        1.0f,
+        0);
+
+    // Set the render target.
+    g_pd3dDeviceContext->OMSetRenderTargets(
+        1,
+        g_mainRenderTargetView.GetAddressOf(),
+        m_pDepthStencilView.Get()
+    );
+}
+
+void set_buffers(Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext, Microsoft::WRL::ComPtr <ID3D11Buffer> & vertex_buffer,
+    Microsoft::WRL::ComPtr < ID3D11Buffer> & index_buffer)
+{
+    // Set up the IA stage by setting the input topology and layout.
+    UINT stride = sizeof(VertexPositionColor);
+    UINT offset = 0;
+
+    g_pd3dDeviceContext->IASetVertexBuffers(
+        0,
+        1,
+        vertex_buffer.GetAddressOf(),
+        &stride,
+        &offset
+    );
+
+    g_pd3dDeviceContext->IASetIndexBuffer(
+        index_buffer.Get(),
+        DXGI_FORMAT_R16_UINT,
+        0
+    );
+
+    g_pd3dDeviceContext->IASetPrimitiveTopology(
+        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+    );
+}
+
 // Main code
 int main(int, char**)
 {
@@ -584,95 +788,13 @@ int main(int, char**)
         }                             
         gui.present_using_imgui();
         vertex_representation vertices = calc_vertices();
-
-        frame_resources freme_res{
-            .vertex_buffer = create_vertex_buffer(vertices.CubeVertices, app.d3dDevice.g_pd3dDevice.Get()),
-            .index_buffer = create_index_buffer(vertices.CubeIndices, app.d3dDevice.g_pd3dDevice.Get()),
-            .m_indexCount = (UINT)vertices.CubeIndices.size()
-        };
-        auto constant_struct = calculate_projections(app.target_view->m_bbDesc, gui.rotation);
-
-		app.d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
-			constant_buffer.Get(),
-			0,
-			nullptr,
-			&constant_struct,
-			0,
-			0
-		);
-
-		// Clear the render target and the z-buffer.
-		const float teal[] = {0.098f, 0.439f, 0.439f, 1.000f};
-		app.d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
-			app.target_view->g_mainRenderTargetView.Get(),
-			teal
-		);
-
-        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
-        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
-
-        CD3D11_TEXTURE2D_DESC depthStencilDesc(
-            DXGI_FORMAT_D24_UNORM_S8_UINT,
-            static_cast<UINT> (app.target_view->m_bbDesc.Width),
-            static_cast<UINT> (app.target_view->m_bbDesc.Height),
-            1, // This depth stencil view has only one texture.
-            1, // Use a single mipmap level.
-            D3D11_BIND_DEPTH_STENCIL
-        );
-
-        app.d3dDevice.g_pd3dDevice->CreateTexture2D(
-            &depthStencilDesc,
-            nullptr,
-            m_pDepthStencil.GetAddressOf()
-        );
-
-        CD3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc(D3D11_DSV_DIMENSION_TEXTURE2D);
-
-        if (!m_pDepthStencil)
-        {
-            throw std::runtime_error("could not create depth stencil");
-        }
-
-        app.d3dDevice.g_pd3dDevice->CreateDepthStencilView(
-            m_pDepthStencil.Get(),
-            &depthStencilViewDesc,
-            m_pDepthStencilView.GetAddressOf()
-        );
-
-		app.d3dDevice.g_pd3dDeviceContext->ClearDepthStencilView(
-			m_pDepthStencilView.Get(),
-			D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
-			1.0f,
-			0);
-
-		// Set the render target.
-		app.d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(
-			1,
-			app.target_view->g_mainRenderTargetView.GetAddressOf(),
-			m_pDepthStencilView.Get()
-		);
-
-		// Set up the IA stage by setting the input topology and layout.
-		UINT stride = sizeof(VertexPositionColor);
-		UINT offset = 0;
-
-		app.d3dDevice.g_pd3dDeviceContext->IASetVertexBuffers(
-			0,
-			1,
-			freme_res.vertex_buffer.GetAddressOf(),
-			&stride,
-			&offset
-		);
-
-		app.d3dDevice.g_pd3dDeviceContext->IASetIndexBuffer(
-			freme_res.index_buffer.Get(),
-			DXGI_FORMAT_R16_UINT,
-			0
-		);
-
-		app.d3dDevice.g_pd3dDeviceContext->IASetPrimitiveTopology(
-			D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
-		);
+        frame_resources frame_res = prepare_frame_resources(vertices, app.d3dDevice.g_pd3dDevice);
+        update_constant_struct(app.target_view->m_bbDesc, gui.rotation, constant_buffer, app.d3dDevice.g_pd3dDeviceContext);
+        app.clear_render_target_view();
+        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = create_depth_stencil(app.target_view->m_bbDesc, app.d3dDevice.g_pd3dDevice);
+        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = create_depth_stencil_view(app.d3dDevice.g_pd3dDevice, m_pDepthStencil);
+        set_depth_stencil_to_scene(app.d3dDevice.g_pd3dDeviceContext, m_pDepthStencilView, app.target_view->g_mainRenderTargetView);
+        set_buffers(app.d3dDevice.g_pd3dDeviceContext, frame_res.vertex_buffer, frame_res.index_buffer);
 
 		app.d3dDevice.g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
 
@@ -698,7 +820,7 @@ int main(int, char**)
 
 		// Calling Draw tells Direct3D to start sending commands to the graphics device.
 		app.d3dDevice.g_pd3dDeviceContext->DrawIndexed(
-			freme_res.m_indexCount,
+			frame_res.m_indexCount,
 			0,
 			0
 		);
