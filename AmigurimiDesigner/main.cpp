@@ -506,7 +506,7 @@ struct rotation_data_gui
     float yaw{ 0 };
 };
 
-ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc, const rotation_data_gui & rot)
+ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
 {
     ConstantBufferStruct m_constantBufferData{};
 
@@ -535,7 +535,7 @@ ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc,
             )
         )
     );
-
+    rotation_data_gui rot;
     DirectX::XMStoreFloat4x4(
         &m_constantBufferData.world,
         DirectX::XMMatrixTranspose(
@@ -571,12 +571,34 @@ bool process_messages()
     return done;
 }
 
+struct imgui_holder
+{
+    imgui_context_holder imgui_context;
+    imgui_win32_holder imgui_win32;
+    imgui_dx11_holder imgui_dx11;
+
+    imgui_holder(HWND hwnd, Microsoft::WRL::ComPtr<ID3D11Device>& g_pd3dDevice, Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext) :
+        imgui_context{},
+        imgui_win32{ hwnd },
+        imgui_dx11{ g_pd3dDevice.Get(), g_pd3dDeviceContext.Get() }
+    {
+
+    }
+};
+
 struct application_basics
 {
     WindowClassWrapper window_class;
     HwndWrapper window{ window_class.wc };
     D3DDeviceHolder d3dDevice = init_d3d_device(window.hwnd);
     std::optional<render_target_view_holder> target_view = init_render_target_view(d3dDevice);
+    imgui_holder imgui_instance{ window.hwnd, d3dDevice.g_pd3dDevice, d3dDevice.g_pd3dDeviceContext };
+
+    application_basics()
+    {
+        window.show_window();
+        IMGUI_CHECKVERSION();
+    }
 
     void update_after_resize()
     {
@@ -601,25 +623,9 @@ struct application_basics
     }
 };
 
-struct imgui_holder
-{
-    imgui_context_holder imgui_context;
-    imgui_win32_holder imgui_win32;
-    imgui_dx11_holder imgui_dx11;
-
-    imgui_holder(application_basics& app):
-        imgui_context{},
-        imgui_win32{ app.window.hwnd },
-        imgui_dx11{ app.d3dDevice.g_pd3dDevice.Get(), app.d3dDevice.g_pd3dDeviceContext.Get() }
-    {
-
-    }
-};
-
 struct gui_wrapper
 {
     std::array<char, 500> prescription{ 0 };
-    rotation_data_gui rotation;
 
     void present_using_imgui()
     {
@@ -630,14 +636,6 @@ struct gui_wrapper
         ImGui::InputTextMultiline("Prescription", prescription.data(), prescription.size());
         ImGui::End();
         ImGui::Begin("Rotation");
-        ImGui::InputFloat("roll", &(rotation.roll));
-        ImGui::InputFloat("pitch", &(rotation.pitch));
-        ImGui::InputFloat("yaw", &(rotation.yaw));
-        if (ImGui::Button("Reset")) {
-            rotation.roll = 0;
-            rotation.pitch = 0;
-            rotation.yaw = 0;
-        }
         ImGui::End();
         ImGui::Render();  
     }
@@ -659,10 +657,10 @@ frame_resources prepare_frame_resources(const vertex_representation & vertices, 
     };
 }
 
-void update_constant_struct(D3D11_TEXTURE2D_DESC &m_bbDesc, const rotation_data_gui & rotation, Microsoft::WRL::ComPtr <ID3D11Buffer> &constant_buffer,
+void update_constant_struct(D3D11_TEXTURE2D_DESC &m_bbDesc, Microsoft::WRL::ComPtr <ID3D11Buffer> &constant_buffer,
     Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext)
 {
-    auto constant_struct = calculate_projections(m_bbDesc, rotation);
+    auto constant_struct = calculate_projections(m_bbDesc);
 
    g_pd3dDeviceContext->UpdateSubresource(
         constant_buffer.Get(),
@@ -760,13 +758,55 @@ void set_buffers(Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceConte
     );
 }
 
+void setup_shaders(Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext,const vertex_shader_holder& vertex_shader,
+    Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader)
+{
+    g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
+
+    // Set up the vertex shader stage.
+    g_pd3dDeviceContext->VSSetShader(
+        vertex_shader.m_pVertexShader.Get(),
+        nullptr,
+        0
+    );
+
+    g_pd3dDeviceContext->VSSetConstantBuffers(
+        0,
+        (UINT)1,
+        constant_buffer.GetAddressOf()
+    );
+
+    // Set up the pixel shader stage.
+    g_pd3dDeviceContext->PSSetShader(
+        pixel_shader.Get(),
+        nullptr,
+        0
+    );
+}
+
+void draw_scene(Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext, int m_indexCount, Microsoft::WRL::ComPtr < IDXGISwapChain> & g_pSwapChain)
+{
+    // Calling Draw tells Direct3D to start sending commands to the graphics device.
+    g_pd3dDeviceContext->DrawIndexed(
+        m_indexCount,
+        0,
+        0
+    );
+
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+    // Present
+    HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
+    if (hr != S_OK)
+    {
+        throw std::runtime_error("could not draw");
+    }
+}
+
 // Main code
 int main(int, char**)
 {
     application_basics app;
-    app.window.show_window();
-    IMGUI_CHECKVERSION();
-    imgui_holder imgui_instance{ app };
     setup_imgui();
     vertex_shader_holder vertex_shader = load_vertex_shader(app.d3dDevice.g_pd3dDevice.Get());
     auto pixel_shader = load_pixel_shader( app.d3dDevice.g_pd3dDevice.Get());
@@ -789,50 +829,14 @@ int main(int, char**)
         gui.present_using_imgui();
         vertex_representation vertices = calc_vertices();
         frame_resources frame_res = prepare_frame_resources(vertices, app.d3dDevice.g_pd3dDevice);
-        update_constant_struct(app.target_view->m_bbDesc, gui.rotation, constant_buffer, app.d3dDevice.g_pd3dDeviceContext);
+        update_constant_struct(app.target_view->m_bbDesc, constant_buffer, app.d3dDevice.g_pd3dDeviceContext);
         app.clear_render_target_view();
         Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = create_depth_stencil(app.target_view->m_bbDesc, app.d3dDevice.g_pd3dDevice);
         Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = create_depth_stencil_view(app.d3dDevice.g_pd3dDevice, m_pDepthStencil);
         set_depth_stencil_to_scene(app.d3dDevice.g_pd3dDeviceContext, m_pDepthStencilView, app.target_view->g_mainRenderTargetView);
         set_buffers(app.d3dDevice.g_pd3dDeviceContext, frame_res.vertex_buffer, frame_res.index_buffer);
-
-		app.d3dDevice.g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
-
-		// Set up the vertex shader stage.
-		app.d3dDevice.g_pd3dDeviceContext->VSSetShader(
-			vertex_shader.m_pVertexShader.Get(),
-			nullptr,
-			0
-		);
-
-		app.d3dDevice.g_pd3dDeviceContext->VSSetConstantBuffers(
-			0,
-			(UINT)1,
-			constant_buffer.GetAddressOf()
-		);
-
-		// Set up the pixel shader stage.
-		app.d3dDevice.g_pd3dDeviceContext->PSSetShader(
-			pixel_shader.Get(),
-			nullptr,
-			0
-		);
-
-		// Calling Draw tells Direct3D to start sending commands to the graphics device.
-		app.d3dDevice.g_pd3dDeviceContext->DrawIndexed(
-			frame_res.m_indexCount,
-			0,
-			0
-		);
-
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-        // Present
-        HRESULT hr = app.d3dDevice.g_pSwapChain->Present(1, 0);   // Present with vsync
-        if (hr != S_OK)
-        {
-            throw std::runtime_error("could not draw");
-        }
+        setup_shaders(app.d3dDevice.g_pd3dDeviceContext, vertex_shader, constant_buffer, pixel_shader);
+        draw_scene(app.d3dDevice.g_pd3dDeviceContext, frame_res.m_indexCount, app.d3dDevice.g_pSwapChain);
     }
         
     return 0;
