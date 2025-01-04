@@ -174,11 +174,257 @@ struct HwndWrapper
     }
 };
 
+struct VertexPositionColor
+{
+    DirectX::XMFLOAT3 pos;
+    DirectX::XMFLOAT3 color;
+};
+
+struct vertex_shader_holder
+{
+    Microsoft::WRL::ComPtr <ID3D11VertexShader> m_pVertexShader;
+    Microsoft::WRL::ComPtr <ID3D11InputLayout> m_pInputLayout;
+};
+
+struct frame_resources
+{
+    Microsoft::WRL::ComPtr <ID3D11Buffer> vertex_buffer;
+    Microsoft::WRL::ComPtr <ID3D11Buffer> index_buffer;
+    UINT m_indexCount;
+};
+
+struct vertex_representation
+{
+    std::vector<VertexPositionColor> CubeVertices;
+    std::vector<unsigned short> CubeIndices;
+
+};
+
+struct ConstantBufferStruct {
+    DirectX::XMFLOAT4X4 world;
+    DirectX::XMFLOAT4X4 view;
+    DirectX::XMFLOAT4X4 projection;
+};
+static_assert((sizeof(ConstantBufferStruct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
+
+void test_hresult(HRESULT hr, const char * message)
+{
+    if (hr != S_OK)
+    {
+        throw std::runtime_error(message);
+    }
+}
+
 struct D3DDeviceHolder
 {
     Microsoft::WRL::ComPtr<ID3D11Device> g_pd3dDevice;
     Microsoft::WRL::ComPtr <ID3D11DeviceContext> g_pd3dDeviceContext;
     Microsoft::WRL::ComPtr < IDXGISwapChain> g_pSwapChain;
+
+    vertex_shader_holder load_vertex_shader() const
+    {
+        vertex_shader_holder vs;
+        std::ifstream vShader{ "VertexShader.cso", std::ios::binary };
+        std::vector<char> fileContents((std::istreambuf_iterator<char>(vShader)), std::istreambuf_iterator<char>());
+        HRESULT hr = g_pd3dDevice->CreateVertexShader(
+            fileContents.data(), fileContents.size(),
+            nullptr, vs.m_pVertexShader.GetAddressOf()
+        );
+        test_hresult(hr, "could not create vertex shader");
+
+        std::vector<D3D11_INPUT_ELEMENT_DESC> iaDesc
+        {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,
+            0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+
+            { "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT,
+            0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        };
+
+        hr = g_pd3dDevice->CreateInputLayout(
+            iaDesc.data(), (UINT)iaDesc.size(),
+            fileContents.data(), fileContents.size(),
+            vs.m_pInputLayout.GetAddressOf()
+        );
+        test_hresult(hr, "could not create vertex shader");
+
+        return vs;
+    }
+
+    Microsoft::WRL::ComPtr <ID3D11PixelShader> load_pixel_shader() const
+    {
+        Microsoft::WRL::ComPtr <ID3D11PixelShader> m_pPixelShader;
+        std::ifstream pShader{ "PixelShader.cso",  std::ios::binary };
+        std::vector<char> fileContents((std::istreambuf_iterator<char>(pShader)),
+            std::istreambuf_iterator<char>());
+
+        HRESULT hr = g_pd3dDevice->CreatePixelShader(
+            fileContents.data(),
+            fileContents.size(),
+            nullptr,
+            m_pPixelShader.GetAddressOf()
+        );
+        test_hresult(hr, "could not create pixel shader");
+        return m_pPixelShader;
+    }
+
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_constant_buffer()
+    {
+        Microsoft::WRL::ComPtr <ID3D11Buffer> m_pConstantBuffer;
+        CD3D11_BUFFER_DESC cbDesc{
+        sizeof(ConstantBufferStruct),
+        D3D11_BIND_CONSTANT_BUFFER
+        };
+
+        HRESULT hr = g_pd3dDevice->CreateBuffer(
+            &cbDesc,
+            nullptr,
+            m_pConstantBuffer.GetAddressOf()
+        );
+
+        if (hr != S_OK || !m_pConstantBuffer)
+        {
+            throw std::runtime_error("could not create constant buffer");
+        }
+        return m_pConstantBuffer;
+    }
+
+    bool is_ocluded() const
+    {
+        return g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED;
+    }
+
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices) const
+    {
+        Microsoft::WRL::ComPtr <ID3D11Buffer> m_pVertexBuffer;
+        CD3D11_BUFFER_DESC vDesc{
+        (UINT)(CubeVertices.size() * sizeof(VertexPositionColor)),
+        D3D11_BIND_VERTEX_BUFFER
+        };
+
+        D3D11_SUBRESOURCE_DATA vData{ CubeVertices.data(), 0, 0 };
+
+        HRESULT hr = g_pd3dDevice->CreateBuffer(
+            &vDesc,
+            &vData,
+            m_pVertexBuffer.GetAddressOf()
+        );
+        if (hr != S_OK)
+        {
+            throw std::runtime_error("could not creare vertex buffer");
+        }
+        return m_pVertexBuffer;
+    }
+
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(std::vector<unsigned short> CubeIndices) const
+    {
+        Microsoft::WRL::ComPtr < ID3D11Buffer> m_pIndexBuffer;
+        CD3D11_BUFFER_DESC iDesc{
+            (UINT)(CubeIndices.size() * sizeof(unsigned short)),
+            D3D11_BIND_INDEX_BUFFER
+        };
+
+        D3D11_SUBRESOURCE_DATA iData{ CubeIndices.data(), 0, 0 };
+
+        HRESULT hr = g_pd3dDevice->CreateBuffer(
+            &iDesc,
+            &iData,
+            m_pIndexBuffer.GetAddressOf()
+        );
+        test_hresult(hr, "could not create index buffer");
+        return m_pIndexBuffer;
+    }
+
+    frame_resources prepare_frame_resources(const vertex_representation& vertices)
+    {
+        return {
+                .vertex_buffer = create_vertex_buffer(vertices.CubeVertices),
+                .index_buffer = create_index_buffer(vertices.CubeIndices),
+                .m_indexCount = (UINT)vertices.CubeIndices.size(),
+        };
+    }
+
+    Microsoft::WRL::ComPtr <ID3D11DepthStencilView> create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil) const
+    {
+        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
+        CD3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc(D3D11_DSV_DIMENSION_TEXTURE2D);
+
+        HRESULT hr = g_pd3dDevice->CreateDepthStencilView(
+            m_pDepthStencil.Get(),
+            &depthStencilViewDesc,
+            m_pDepthStencilView.GetAddressOf()
+        );
+        test_hresult(hr, "could not create depth stencil view");
+
+        return m_pDepthStencilView;
+    }
+
+    void set_buffers(Microsoft::WRL::ComPtr <ID3D11Buffer>& vertex_buffer, Microsoft::WRL::ComPtr < ID3D11Buffer>& index_buffer) const
+    {
+        // Set up the IA stage by setting the input topology and layout.
+        UINT stride = sizeof(VertexPositionColor);
+        UINT offset = 0;
+
+        g_pd3dDeviceContext->IASetVertexBuffers(
+            0,
+            1,
+            vertex_buffer.GetAddressOf(),
+            &stride,
+            &offset
+        );
+
+        g_pd3dDeviceContext->IASetIndexBuffer(
+            index_buffer.Get(),
+            DXGI_FORMAT_R16_UINT,
+            0
+        );
+
+        g_pd3dDeviceContext->IASetPrimitiveTopology(
+            D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+        );
+    }
+
+    void setup_shaders(const vertex_shader_holder& vertex_shader,
+        Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader) const
+    {
+        g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
+
+        // Set up the vertex shader stage.
+        g_pd3dDeviceContext->VSSetShader(
+            vertex_shader.m_pVertexShader.Get(),
+            nullptr,
+            0
+        );
+
+        g_pd3dDeviceContext->VSSetConstantBuffers(
+            0,
+            (UINT)1,
+            constant_buffer.GetAddressOf()
+        );
+
+        // Set up the pixel shader stage.
+        g_pd3dDeviceContext->PSSetShader(
+            pixel_shader.Get(),
+            nullptr,
+            0
+        );
+    }
+
+    void draw_scene(int m_indexCount) const
+    {
+        // Calling Draw tells Direct3D to start sending commands to the graphics device.
+        g_pd3dDeviceContext->DrawIndexed(
+            m_indexCount,
+            0,
+            0
+        );
+
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+        // Present
+        HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
+        test_hresult(hr, "could not draw");
+    }
 };
 
 D3DDeviceHolder init_d3d_device(HWND hWnd)
@@ -207,8 +453,7 @@ D3DDeviceHolder init_d3d_device(HWND hWnd)
 		res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, createDeviceFlags, featureLevelArray, 2,
             D3D11_SDK_VERSION, &sd, device_holder.g_pSwapChain.GetAddressOf(), device_holder.g_pd3dDevice.GetAddressOf(),
             &featureLevel, device_holder.g_pd3dDeviceContext.GetAddressOf());
-	if (res != S_OK)
-		throw std::runtime_error("could not create D3D device");
+    test_hresult(res, "could not create D3D device");
     return device_holder;
 }
 
@@ -224,10 +469,7 @@ render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice)
 {
     render_target_view_holder target;
     auto res = d3ddevice.g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)(&(target.pBackBuffer)));
-    if (res != S_OK || !target.pBackBuffer)
-    {
-        throw std::runtime_error("no back buffer");
-    }
+    test_hresult(res, "no back buffer");
     target.pBackBuffer->GetDesc(&target.m_bbDesc);
 
     target.m_viewport = D3D11_VIEWPORT{
@@ -242,12 +484,8 @@ render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice)
 	);
 
 	res = d3ddevice.g_pd3dDevice->CreateRenderTargetView(target.pBackBuffer.Get(), nullptr, target.g_mainRenderTargetView.GetAddressOf());
-	if (res != S_OK)
-	{
-		throw std::runtime_error("could not create render target view");
-	}
+    test_hresult(res, "could not create render target view");
     return target;
-
 }
 
 struct imgui_context_holder
@@ -305,118 +543,6 @@ struct imgui_dx11_holder
     }
 };
 
-struct vertex_shader_holder
-{
-    Microsoft::WRL::ComPtr <ID3D11VertexShader> m_pVertexShader;
-    Microsoft::WRL::ComPtr <ID3D11InputLayout> m_pInputLayout;
-};
-
-vertex_shader_holder load_vertex_shader(ID3D11Device* g_pd3dDevice)
-{
-    vertex_shader_holder vs;
-	std::ifstream vShader{ "VertexShader.cso",
-        std::ios::binary };
-	std::vector<char> fileContents((std::istreambuf_iterator<char>(vShader)),
-		std::istreambuf_iterator<char>());
-	HRESULT hr = g_pd3dDevice->CreateVertexShader(
-		fileContents.data(),
-		fileContents.size(),
-		nullptr,
-		vs.m_pVertexShader.GetAddressOf()
-	);
-
-	if (hr != S_OK)
-	{
-		throw std::runtime_error("could not create vertex shader");
-	}
-
-	std::vector<D3D11_INPUT_ELEMENT_DESC> iaDesc
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,
-		0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT,
-		0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-	};
-
-	hr = g_pd3dDevice->CreateInputLayout(
-		iaDesc.data(),
-		(UINT)iaDesc.size(),
-		fileContents.data(),
-		fileContents.size(),
-		vs.m_pInputLayout.GetAddressOf()
-	);
-
-	if (hr != S_OK)
-	{
-		throw std::runtime_error("could not create vertex shader");
-	}
-    return vs;
-}
-
-Microsoft::WRL::ComPtr <ID3D11PixelShader> load_pixel_shader(ID3D11Device* g_pd3dDevice)
-{
-    Microsoft::WRL::ComPtr <ID3D11PixelShader> m_pPixelShader;
-	std::ifstream pShader{ "PixelShader.cso",  std::ios::binary };
-	std::vector<char> fileContents((std::istreambuf_iterator<char>(pShader)),
-		std::istreambuf_iterator<char>());
-
-	HRESULT hr = g_pd3dDevice->CreatePixelShader(
-		fileContents.data(),
-		fileContents.size(),
-		nullptr,
-		m_pPixelShader.GetAddressOf()
-	);
-	if (hr != S_OK)
-	{
-		throw std::runtime_error("could not create pixel shader");
-	}
-    return m_pPixelShader;
-}
-
-struct ConstantBufferStruct {
-    DirectX::XMFLOAT4X4 world;
-    DirectX::XMFLOAT4X4 view;
-    DirectX::XMFLOAT4X4 projection;
-};
-
-static_assert((sizeof(ConstantBufferStruct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
-
-
-Microsoft::WRL::ComPtr <ID3D11Buffer> create_constant_buffer(ID3D11Device* g_pd3dDevice)
-{
-    Microsoft::WRL::ComPtr <ID3D11Buffer> m_pConstantBuffer;
-	CD3D11_BUFFER_DESC cbDesc{
-	sizeof(ConstantBufferStruct),
-	D3D11_BIND_CONSTANT_BUFFER
-	};
-
-	HRESULT hr = g_pd3dDevice->CreateBuffer(
-		&cbDesc,
-		nullptr,
-		m_pConstantBuffer.GetAddressOf()
-	);
-
-	if (hr != S_OK || !m_pConstantBuffer)
-	{
-		throw std::runtime_error("could not create constant buffer");
-	}
-    return m_pConstantBuffer;
-}
-
-struct VertexPositionColor
-{
-    DirectX::XMFLOAT3 pos;
-    DirectX::XMFLOAT3 color;
-};
-
-struct vertex_representation
-{
-    std::vector<VertexPositionColor> CubeVertices;
-    std::vector<unsigned short> CubeIndices;
-
-};
-
 vertex_representation calc_vertices()
 {
     return {
@@ -453,50 +579,6 @@ vertex_representation calc_vertices()
             1,7,5,
         }
     };
-}
-
-Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices, ID3D11Device* g_pd3dDevice)
-{
-	Microsoft::WRL::ComPtr <ID3D11Buffer> m_pVertexBuffer;
-	CD3D11_BUFFER_DESC vDesc{
-	(UINT)(CubeVertices.size() * sizeof(VertexPositionColor)),
-	D3D11_BIND_VERTEX_BUFFER
-	};
-
-	D3D11_SUBRESOURCE_DATA vData{ CubeVertices.data(), 0, 0 };
-
-	HRESULT hr = g_pd3dDevice->CreateBuffer(
-		&vDesc,
-		&vData,
-		m_pVertexBuffer.GetAddressOf()
-	);
-	if (hr != S_OK)
-	{
-		throw std::runtime_error("could not creare vertex buffer");
-	}
-	return m_pVertexBuffer;
-}
-
-Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(std::vector<unsigned short> CubeIndices, ID3D11Device* g_pd3dDevice)
-{
-    Microsoft::WRL::ComPtr < ID3D11Buffer> m_pIndexBuffer;
-    CD3D11_BUFFER_DESC iDesc{
-        (UINT)(CubeIndices.size() * sizeof(unsigned short)),
-        D3D11_BIND_INDEX_BUFFER
-    };
-
-    D3D11_SUBRESOURCE_DATA iData{ CubeIndices.data(), 0, 0 };
-
-    HRESULT hr = g_pd3dDevice->CreateBuffer(
-        &iDesc,
-        &iData,
-        m_pIndexBuffer.GetAddressOf()
-    );
-    if (hr != S_OK)
-    {
-        throw std::runtime_error("could not create index buffer");
-    }
-    return m_pIndexBuffer;
 }
 
 struct rotation_data_gui
@@ -598,6 +680,7 @@ struct application_basics
     {
         window.show_window();
         IMGUI_CHECKVERSION();
+        setup_imgui();
     }
 
     void update_after_resize()
@@ -606,10 +689,7 @@ struct application_basics
         d3dDevice.g_pd3dDeviceContext->ClearState();
         d3dDevice.g_pd3dDeviceContext->Flush();
         HRESULT hr = d3dDevice.g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
-        if (hr != S_OK)
-        {
-            throw std::runtime_error("could not resize buffers");
-        }
+        test_hresult(hr, "could not resize buffers");
         target_view = init_render_target_view(d3dDevice);
     }
 
@@ -619,6 +699,58 @@ struct application_basics
         d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
             target_view->g_mainRenderTargetView.Get(),
             teal
+        );
+    }
+
+    void update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer)
+    {
+        auto constant_struct = calculate_projections(target_view->m_bbDesc);
+
+        d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
+            constant_buffer.Get(),
+            0,
+            nullptr,
+            &(constant_struct),
+            0,
+            0
+        );
+    }
+
+    Microsoft::WRL::ComPtr <ID3D11Texture2D> create_depth_stencil()
+    {
+        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
+        CD3D11_TEXTURE2D_DESC depthStencilDesc(
+            DXGI_FORMAT_D24_UNORM_S8_UINT,
+            static_cast<UINT> (target_view->m_bbDesc.Width),
+            static_cast<UINT> (target_view->m_bbDesc.Height),
+            1, // This depth stencil view has only one texture.
+            1, // Use a single mipmap level.
+            D3D11_BIND_DEPTH_STENCIL
+        );
+
+        HRESULT res = d3dDevice.g_pd3dDevice->CreateTexture2D(
+            &depthStencilDesc,
+            nullptr,
+            m_pDepthStencil.GetAddressOf()
+        );
+        test_hresult(res, "could not create depth stencil");
+
+        return m_pDepthStencil;
+    }
+
+    void set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DepthStencilView>& m_pDepthStencilView)
+    {
+        d3dDevice.g_pd3dDeviceContext->ClearDepthStencilView(
+            m_pDepthStencilView.Get(),
+            D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
+            1.0f,
+            0);
+
+        // Set the render target.
+        d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(
+            1,
+            target_view->g_mainRenderTargetView.GetAddressOf(),
+            m_pDepthStencilView.Get()
         );
     }
 };
@@ -641,182 +773,27 @@ struct gui_wrapper
     }
 };
 
-struct frame_resources
+struct global_resources
 {
-    Microsoft::WRL::ComPtr <ID3D11Buffer> vertex_buffer;
-    Microsoft::WRL::ComPtr <ID3D11Buffer> index_buffer;
-    UINT m_indexCount;
+    vertex_shader_holder vertex_shader;
+    Microsoft::WRL::ComPtr <ID3D11PixelShader> pixel_shader;
+    Microsoft::WRL::ComPtr <ID3D11Buffer> constant_buffer;
 };
 
-frame_resources prepare_frame_resources(const vertex_representation & vertices, Microsoft::WRL::ComPtr<ID3D11Device> & g_pd3dDevice)
-{
-    return {
-            .vertex_buffer = create_vertex_buffer(vertices.CubeVertices, g_pd3dDevice.Get()),
-            .index_buffer = create_index_buffer(vertices.CubeIndices, g_pd3dDevice.Get()),
-            .m_indexCount = (UINT)vertices.CubeIndices.size(),
-    };
-}
-
-void update_constant_struct(D3D11_TEXTURE2D_DESC &m_bbDesc, Microsoft::WRL::ComPtr <ID3D11Buffer> &constant_buffer,
-    Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext)
-{
-    auto constant_struct = calculate_projections(m_bbDesc);
-
-   g_pd3dDeviceContext->UpdateSubresource(
-        constant_buffer.Get(),
-        0,
-        nullptr,
-        &(constant_struct),
-        0,
-        0
-    );
-}
-
-Microsoft::WRL::ComPtr <ID3D11Texture2D> create_depth_stencil(D3D11_TEXTURE2D_DESC& m_bbDesc, Microsoft::WRL::ComPtr<ID3D11Device> g_pd3dDevice)
-{
-    Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
-    CD3D11_TEXTURE2D_DESC depthStencilDesc(
-        DXGI_FORMAT_D24_UNORM_S8_UINT,
-        static_cast<UINT> (m_bbDesc.Width),
-        static_cast<UINT> (m_bbDesc.Height),
-        1, // This depth stencil view has only one texture.
-        1, // Use a single mipmap level.
-        D3D11_BIND_DEPTH_STENCIL
-    );
-
-    HRESULT res = g_pd3dDevice->CreateTexture2D(
-        &depthStencilDesc,
-        nullptr,
-        m_pDepthStencil.GetAddressOf()
-    );
-
-    if (res != S_OK)
-    {
-        throw std::runtime_error("could not create depth stencil");
-    }
-    return m_pDepthStencil;
-}
-
-Microsoft::WRL::ComPtr <ID3D11DepthStencilView> create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Device>& g_pd3dDevice, Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil)
-{
-    Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
-    CD3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc(D3D11_DSV_DIMENSION_TEXTURE2D);
-
-    HRESULT hr = g_pd3dDevice->CreateDepthStencilView(
-        m_pDepthStencil.Get(),
-        &depthStencilViewDesc,
-        m_pDepthStencilView.GetAddressOf()
-    );
-
-    if (hr != S_OK)
-    {
-        throw std::runtime_error("could not create depth stencil view");
-    }
-    return m_pDepthStencilView;
-}
-
-void set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DeviceContext> & g_pd3dDeviceContext, Microsoft::WRL::ComPtr <ID3D11DepthStencilView> & m_pDepthStencilView,
-    Microsoft::WRL::ComPtr <ID3D11RenderTargetView> & g_mainRenderTargetView)
-{
-    g_pd3dDeviceContext->ClearDepthStencilView(
-        m_pDepthStencilView.Get(),
-        D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
-        1.0f,
-        0);
-
-    // Set the render target.
-    g_pd3dDeviceContext->OMSetRenderTargets(
-        1,
-        g_mainRenderTargetView.GetAddressOf(),
-        m_pDepthStencilView.Get()
-    );
-}
-
-void set_buffers(Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext, Microsoft::WRL::ComPtr <ID3D11Buffer> & vertex_buffer,
-    Microsoft::WRL::ComPtr < ID3D11Buffer> & index_buffer)
-{
-    // Set up the IA stage by setting the input topology and layout.
-    UINT stride = sizeof(VertexPositionColor);
-    UINT offset = 0;
-
-    g_pd3dDeviceContext->IASetVertexBuffers(
-        0,
-        1,
-        vertex_buffer.GetAddressOf(),
-        &stride,
-        &offset
-    );
-
-    g_pd3dDeviceContext->IASetIndexBuffer(
-        index_buffer.Get(),
-        DXGI_FORMAT_R16_UINT,
-        0
-    );
-
-    g_pd3dDeviceContext->IASetPrimitiveTopology(
-        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
-    );
-}
-
-void setup_shaders(Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext,const vertex_shader_holder& vertex_shader,
-    Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader)
-{
-    g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
-
-    // Set up the vertex shader stage.
-    g_pd3dDeviceContext->VSSetShader(
-        vertex_shader.m_pVertexShader.Get(),
-        nullptr,
-        0
-    );
-
-    g_pd3dDeviceContext->VSSetConstantBuffers(
-        0,
-        (UINT)1,
-        constant_buffer.GetAddressOf()
-    );
-
-    // Set up the pixel shader stage.
-    g_pd3dDeviceContext->PSSetShader(
-        pixel_shader.Get(),
-        nullptr,
-        0
-    );
-}
-
-void draw_scene(Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext, int m_indexCount, Microsoft::WRL::ComPtr < IDXGISwapChain> & g_pSwapChain)
-{
-    // Calling Draw tells Direct3D to start sending commands to the graphics device.
-    g_pd3dDeviceContext->DrawIndexed(
-        m_indexCount,
-        0,
-        0
-    );
-
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-    // Present
-    HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
-    if (hr != S_OK)
-    {
-        throw std::runtime_error("could not draw");
-    }
-}
-
-// Main code
 int main(int, char**)
 {
     application_basics app;
-    setup_imgui();
-    vertex_shader_holder vertex_shader = load_vertex_shader(app.d3dDevice.g_pd3dDevice.Get());
-    auto pixel_shader = load_pixel_shader( app.d3dDevice.g_pd3dDevice.Get());
-    auto constant_buffer = create_constant_buffer( app.d3dDevice.g_pd3dDevice.Get());
+    global_resources application_resources{
+        .vertex_shader = app.d3dDevice.load_vertex_shader(),
+        .pixel_shader = app.d3dDevice.load_pixel_shader(),
+        .constant_buffer = app.d3dDevice.create_constant_buffer()
+    };
     gui_wrapper gui;
     while (true)
     {
         if (process_messages())
             break;
-        if (app.d3dDevice.g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
+        if (app.d3dDevice.is_ocluded())
         {
             ::Sleep(10);
             continue;
@@ -828,15 +805,15 @@ int main(int, char**)
         }                             
         gui.present_using_imgui();
         vertex_representation vertices = calc_vertices();
-        frame_resources frame_res = prepare_frame_resources(vertices, app.d3dDevice.g_pd3dDevice);
-        update_constant_struct(app.target_view->m_bbDesc, constant_buffer, app.d3dDevice.g_pd3dDeviceContext);
+        frame_resources frame_res = app.d3dDevice.prepare_frame_resources(vertices);
+        app.update_constant_struct(application_resources.constant_buffer);
         app.clear_render_target_view();
-        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = create_depth_stencil(app.target_view->m_bbDesc, app.d3dDevice.g_pd3dDevice);
-        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = create_depth_stencil_view(app.d3dDevice.g_pd3dDevice, m_pDepthStencil);
-        set_depth_stencil_to_scene(app.d3dDevice.g_pd3dDeviceContext, m_pDepthStencilView, app.target_view->g_mainRenderTargetView);
-        set_buffers(app.d3dDevice.g_pd3dDeviceContext, frame_res.vertex_buffer, frame_res.index_buffer);
-        setup_shaders(app.d3dDevice.g_pd3dDeviceContext, vertex_shader, constant_buffer, pixel_shader);
-        draw_scene(app.d3dDevice.g_pd3dDeviceContext, frame_res.m_indexCount, app.d3dDevice.g_pSwapChain);
+        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = app.create_depth_stencil();
+        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = app.d3dDevice.create_depth_stencil_view(m_pDepthStencil);
+        app.set_depth_stencil_to_scene(m_pDepthStencilView);
+        app.d3dDevice.set_buffers(frame_res.vertex_buffer, frame_res.index_buffer);
+        app.d3dDevice.setup_shaders(application_resources.vertex_shader, application_resources.constant_buffer, application_resources.pixel_shader);
+        app.d3dDevice.draw_scene(frame_res.m_indexCount);
     }
         
     return 0;
