@@ -70,7 +70,6 @@ struct ViewportConfigurationManager
         auto new_diraction = new_eye - rotation_center;
         auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
         return new_up;
-        //return up;
     }
 
     void stop_dragging()
@@ -80,6 +79,36 @@ struct ViewportConfigurationManager
         eye = new_eye;
         up = new_up;
         dragging = false;
+    }
+
+    void reset_defaults()
+    {
+        eye = DirectX::XMVectorSet(0.0f, 0.7f, 1.5f, 0.f);
+        at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+        rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
+    }
+
+    void front_view()
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        auto distance = XMVector3Length(center_direction);
+        at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+        rotation_center = XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
+        eye = at + distance * XMVectorSet(0.0f, 0.f, 1.f , 0.f);
+    }
+
+    void top_view()
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        auto distance = XMVector3Length(center_direction);
+        at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        up = XMVectorSet(0.0f, 0.0f, -1.0f, 0.f);
+        rotation_center = XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
+        eye = at + distance * XMVectorSet(0.0f, 1.f, 0.f, 0.f);
     }
 };
 
@@ -768,6 +797,15 @@ struct gui_wrapper
         ImGui::InputTextMultiline("Prescription", prescription.data(), prescription.size());
         ImGui::End();
         ImGui::Begin("Rotation");
+        if (ImGui::Button("default view")) {
+            viewport_config.reset_defaults();
+        }
+        if (ImGui::Button("front view")) {
+            viewport_config.front_view();
+        }
+        if (ImGui::Button("top view")) {
+            viewport_config.top_view();
+        }
         ImGui::End();
         ImGui::Render();  
     }
