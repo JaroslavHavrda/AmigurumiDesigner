@@ -116,8 +116,8 @@ ViewportConfigurationManager viewport_config;
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-        return true;
+    if (auto res = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+        return res;
 
     switch (msg)
     {
@@ -155,6 +155,20 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_LBUTTONUP:
         viewport_config.stop_dragging();
         return 0;
+    case WM_MOUSEWHEEL:
+    {
+        using namespace DirectX;
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.WantCaptureMouse)
+        {
+            return 0;
+        }
+        auto delta = (int16_t)HIWORD(wParam);
+        auto scaling = exp(delta/1200.);
+        std::cout << "mousewheel " << delta <<" " << scaling << "\n";
+        viewport_config.eye *= (float)scaling;
+        return 0;
+    }
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 }
