@@ -16,24 +16,28 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <string_view>
+#include <charconv>
 
 // Data
 UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
 
-vertex_representation calc_vertices()
+vertex_representation calc_vertices(const std::string_view & prescription)
 {
+    int diameter = 1;
+    /*auto [ptr, err] =*/ std::from_chars(prescription.data(), prescription.data() + prescription.size(), diameter);
     return {
         std::vector<VertexPositionColor>
         {
-            {DirectX::XMFLOAT3{ -0.5f,-0.5f,-0.5f}, DirectX::XMFLOAT3{0,   0,   0},},
-            {DirectX::XMFLOAT3{-0.5f,-0.5f, 0.5f}, DirectX::XMFLOAT3{0,   0,   1}, },
-            {DirectX::XMFLOAT3{ -0.5f, 0.5f,-0.5f}, DirectX::XMFLOAT3{0,   1,   0},},
-            {DirectX::XMFLOAT3{ -0.5f, 0.5f, 0.5f}, DirectX::XMFLOAT3{0,   1,   1},},
+            {DirectX::XMFLOAT3{ -0.5f * diameter,-0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{0,   0,   0},},
+            {DirectX::XMFLOAT3{-0.5f * diameter,-0.5f * diameter, 0.5f * diameter}, DirectX::XMFLOAT3{0,   0,   1}, },
+            {DirectX::XMFLOAT3{ -0.5f * diameter, 0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{0,   1,   0},},
+            {DirectX::XMFLOAT3{ -0.5f * diameter, 0.5f * diameter, 0.5f * diameter}, DirectX::XMFLOAT3{0,   1,   1},},
 
-            {DirectX::XMFLOAT3{0.5f,-0.5f,-0.5f}, DirectX::XMFLOAT3{1,   0,   0}, },
-            {DirectX::XMFLOAT3{0.5f,-0.5f, 0.5f}, DirectX::XMFLOAT3{1,   0,   1}, },
-            {DirectX::XMFLOAT3{0.5f, 0.5f,-0.5f}, DirectX::XMFLOAT3{1,   1,   0}, },
-            {DirectX::XMFLOAT3{0.5f, 0.5f, 0.5f}, DirectX::XMFLOAT3{0,   0,   0},},
+            {DirectX::XMFLOAT3{0.5f* diameter,-0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{1,   0,   0}, },
+            {DirectX::XMFLOAT3{0.5f * diameter,-0.5f* diameter, 0.5f * diameter}, DirectX::XMFLOAT3{1,   0,   1}, },
+            {DirectX::XMFLOAT3{0.5f * diameter, 0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{1,   1,   0}, },
+            {DirectX::XMFLOAT3{0.5f * diameter, 0.5f * diameter, 0.5f * diameter}, DirectX::XMFLOAT3{0,   0,   0},},
         },
         std::vector<unsigned short>
         {
@@ -111,7 +115,7 @@ int main(int, char**)
             g_ResizeWidth = g_ResizeHeight = 0;
         }                             
         gui.present_using_imgui();
-        vertex_representation vertices = calc_vertices();
+        vertex_representation vertices = calc_vertices({ gui.prescription.data(), gui.prescription.size()});
         draw_vertices(app, vertices, application_resources);
     }
         
