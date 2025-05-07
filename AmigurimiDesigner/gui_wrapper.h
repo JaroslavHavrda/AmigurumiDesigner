@@ -1,18 +1,13 @@
 #pragma once
 
 #include "imgui.h"
-#include "imgui_impl_win32.h"
-#include "imgui_impl_dx11.h"
 #include <array>
 #include <Windows.h>
 #include <wrl\client.h>
 #include <d3d11.h>
 #include <stdexcept>
 #include <directxmath.h>
-#include <iostream>
-#include <windowsx.h>
 #include <vector>
-#include <fstream>
 #include <optional>
 
 // Forward declare message handler from imgui_impl_win32.cpp
@@ -26,7 +21,7 @@ struct MousePosition
 
 struct ViewportConfigurationManager
 {
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 0.7f, 1.5f, 0.f);
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
     DirectX::XMVECTOR rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
@@ -160,18 +155,8 @@ struct imgui_context_holder
 
 struct imgui_win32_holder
 {
-    imgui_win32_holder(HWND hwnd)
-    {
-        auto res = ImGui_ImplWin32_Init(hwnd);
-        if (!res)
-        {
-            throw std::runtime_error("could not init imgui win32");
-        }
-    }
-    ~imgui_win32_holder()
-    {
-        ImGui_ImplWin32_Shutdown();
-    }
+    imgui_win32_holder(HWND hwnd);
+    ~imgui_win32_holder();
 };
 
 struct imgui_dx11_holder
@@ -205,75 +190,22 @@ struct application_basics
     imgui_holder imgui_instance{ window.hwnd, d3dDevice.g_pd3dDevice, d3dDevice.g_pd3dDeviceContext };
 
     application_basics();
+    void update_after_resize();
+    void clear_render_target_view();
+    void update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer);
+    Microsoft::WRL::ComPtr <ID3D11Texture2D> create_depth_stencil();
+    void set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DepthStencilView>& m_pDepthStencilView);
 
-    void update_after_resize()
+    void draw_vertices(const vertex_representation& vertices, global_resources& application_resources)
     {
-        target_view = std::optional<render_target_view_holder>{};
-        d3dDevice.g_pd3dDeviceContext->ClearState();
-        d3dDevice.g_pd3dDeviceContext->Flush();
-        HRESULT hr = d3dDevice.g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
-        test_hresult(hr, "could not resize buffers");
-        target_view = init_render_target_view(d3dDevice);
-    }
-
-    void clear_render_target_view()
-    {
-        const float teal[] = { 0.098f, 0.439f, 0.439f, 1.000f };
-        d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
-            target_view->g_mainRenderTargetView.Get(),
-            teal
-        );
-    }
-
-    void update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer)
-    {
-        auto constant_struct = calculate_projections(target_view->m_bbDesc);
-
-        d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
-            constant_buffer.Get(),
-            0,
-            nullptr,
-            &(constant_struct),
-            0,
-            0
-        );
-    }
-
-    Microsoft::WRL::ComPtr <ID3D11Texture2D> create_depth_stencil()
-    {
-        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
-        CD3D11_TEXTURE2D_DESC depthStencilDesc(
-            DXGI_FORMAT_D24_UNORM_S8_UINT,
-            static_cast<UINT> (target_view->m_bbDesc.Width),
-            static_cast<UINT> (target_view->m_bbDesc.Height),
-            1, // This depth stencil view has only one texture.
-            1, // Use a single mipmap level.
-            D3D11_BIND_DEPTH_STENCIL
-        );
-
-        HRESULT res = d3dDevice.g_pd3dDevice->CreateTexture2D(
-            &depthStencilDesc,
-            nullptr,
-            m_pDepthStencil.GetAddressOf()
-        );
-        test_hresult(res, "could not create depth stencil");
-
-        return m_pDepthStencil;
-    }
-
-    void set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DepthStencilView>& m_pDepthStencilView)
-    {
-        d3dDevice.g_pd3dDeviceContext->ClearDepthStencilView(
-            m_pDepthStencilView.Get(),
-            D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
-            1.0f,
-            0);
-
-        // Set the render target.
-        d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(
-            1,
-            target_view->g_mainRenderTargetView.GetAddressOf(),
-            m_pDepthStencilView.Get()
-        );
+        frame_resources frame_res = d3dDevice.prepare_frame_resources(vertices);
+        update_constant_struct(application_resources.constant_buffer);
+        clear_render_target_view();
+        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = create_depth_stencil();
+        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = d3dDevice.create_depth_stencil_view(m_pDepthStencil);
+        set_depth_stencil_to_scene(m_pDepthStencilView);
+        d3dDevice.set_buffers(frame_res.vertex_buffer, frame_res.index_buffer);
+        d3dDevice.setup_shaders(application_resources.vertex_shader, application_resources.constant_buffer, application_resources.pixel_shader);
+        d3dDevice.draw_scene(frame_res.m_indexCount);
     }
 };

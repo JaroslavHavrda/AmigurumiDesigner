@@ -1,5 +1,15 @@
 #include "gui_wrapper.h"
 
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx11.h"
+
+#include <directxmath.h>
+#include <windowsx.h>
+
+#include <fstream>
+#include <vector>
+
 void setup_imgui()
 {
     ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -171,7 +181,6 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
         auto delta = (int16_t)HIWORD(wParam);
         auto scaling = exp(delta / 1200.);
-        std::cout << "mousewheel " << delta << " " << scaling << "\n";
         viewport_config.eye *= (float)scaling;
         return 0;
     }
@@ -551,6 +560,91 @@ application_basics::application_basics()
     window.show_window();
     IMGUI_CHECKVERSION();
     setup_imgui();
+}
+
+void application_basics::update_after_resize()
+{
+    target_view = std::optional<render_target_view_holder>{};
+    d3dDevice.g_pd3dDeviceContext->ClearState();
+    d3dDevice.g_pd3dDeviceContext->Flush();
+    HRESULT hr = d3dDevice.g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
+    test_hresult(hr, "could not resize buffers");
+    target_view = init_render_target_view(d3dDevice);
+}
+
+void application_basics::clear_render_target_view()
+{
+    const float teal[] = { 0.098f, 0.439f, 0.439f, 1.000f };
+    d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
+        target_view->g_mainRenderTargetView.Get(),
+        teal
+    );
+}
+
+void application_basics::update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer)
+{
+    auto constant_struct = calculate_projections(target_view->m_bbDesc);
+
+    d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
+        constant_buffer.Get(),
+        0,
+        nullptr,
+        &(constant_struct),
+        0,
+        0
+    );
+}
+
+Microsoft::WRL::ComPtr <ID3D11Texture2D> application_basics::create_depth_stencil()
+{
+    Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
+    CD3D11_TEXTURE2D_DESC depthStencilDesc(
+        DXGI_FORMAT_D24_UNORM_S8_UINT,
+        static_cast<UINT> (target_view->m_bbDesc.Width),
+        static_cast<UINT> (target_view->m_bbDesc.Height),
+        1, // This depth stencil view has only one texture.
+        1, // Use a single mipmap level.
+        D3D11_BIND_DEPTH_STENCIL
+    );
+
+    HRESULT res = d3dDevice.g_pd3dDevice->CreateTexture2D(
+        &depthStencilDesc,
+        nullptr,
+        m_pDepthStencil.GetAddressOf()
+    );
+    test_hresult(res, "could not create depth stencil");
+
+    return m_pDepthStencil;
+}
+
+void application_basics::set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DepthStencilView>& m_pDepthStencilView)
+{
+    d3dDevice.g_pd3dDeviceContext->ClearDepthStencilView(
+        m_pDepthStencilView.Get(),
+        D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
+        1.0f,
+        0);
+
+    // Set the render target.
+    d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(
+        1,
+        target_view->g_mainRenderTargetView.GetAddressOf(),
+        m_pDepthStencilView.Get()
+    );
+}
+
+imgui_win32_holder::imgui_win32_holder(HWND hwnd)
+{
+    auto res = ImGui_ImplWin32_Init(hwnd);
+    if (!res)
+    {
+        throw std::runtime_error("could not init imgui win32");
+    }
+}
+
+imgui_win32_holder::~imgui_win32_holder()
+{
+    ImGui_ImplWin32_Shutdown();
 }
 
 ViewportConfigurationManager viewport_config;

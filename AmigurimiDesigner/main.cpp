@@ -1,72 +1,51 @@
 #include "gui_wrapper.h"
 
-#include "imgui.h"
-#include "imgui_impl_win32.h"
-#include "imgui_impl_dx11.h"
-#include <d3d11.h>
-#include <directxmath.h>
-#include <wrl\client.h>
-#include <Windows.h>
-#include <windowsx.h>
-#include <tchar.h>
-#include <stdexcept>
-#include <array>
 #include <cmath>
 #include <optional>
 #include <vector>
-#include <fstream>
-#include <iostream>
 #include <string_view>
 #include <charconv>
+#include <numbers>
 
 // Data
 UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
 
-vertex_representation calc_vertices(const std::string_view & prescription)
+static vertex_representation calc_vertices(const std::string_view & prescription)
 {
     int diameter = 1;
     /*auto [ptr, err] =*/ std::from_chars(prescription.data(), prescription.data() + prescription.size(), diameter);
-    return {
-        std::vector<VertexPositionColor>
+    std::vector<VertexPositionColor> vertices{};
+    std::vector<unsigned short> indices{};
+    constexpr int slice_count = 33;
+    vertices.emplace_back(DirectX::XMFLOAT3{ 0.f, 1.f, 0.f }, DirectX::XMFLOAT3{ 1.f,   1.f,   1.f });
+    vertices.emplace_back(DirectX::XMFLOAT3{ 0.f, 0.f, 0.f }, DirectX::XMFLOAT3{ 1.f,   1.f,   1.f });
+    unsigned short start_index = vertices.size();
+    for (unsigned short i = 0; i < slice_count; ++i)
+    {
+        float angle = (float)( i * std::numbers::pi * 2 / slice_count);
+        vertices.emplace_back( DirectX::XMFLOAT3{ std::sin(angle) * diameter, 0.f, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 });
+        vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, 1.f, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 });
+        for (const auto vertex : { 0,1,2 })
         {
-            {DirectX::XMFLOAT3{ -0.5f * diameter,-0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{0,   0,   0},},
-            {DirectX::XMFLOAT3{-0.5f * diameter,-0.5f * diameter, 0.5f * diameter}, DirectX::XMFLOAT3{0,   0,   1}, },
-            {DirectX::XMFLOAT3{ -0.5f * diameter, 0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{0,   1,   0},},
-            {DirectX::XMFLOAT3{ -0.5f * diameter, 0.5f * diameter, 0.5f * diameter}, DirectX::XMFLOAT3{0,   1,   1},},
-
-            {DirectX::XMFLOAT3{0.5f* diameter,-0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{1,   0,   0}, },
-            {DirectX::XMFLOAT3{0.5f * diameter,-0.5f* diameter, 0.5f * diameter}, DirectX::XMFLOAT3{1,   0,   1}, },
-            {DirectX::XMFLOAT3{0.5f * diameter, 0.5f * diameter,-0.5f * diameter}, DirectX::XMFLOAT3{1,   1,   0}, },
-            {DirectX::XMFLOAT3{0.5f * diameter, 0.5f * diameter, 0.5f * diameter}, DirectX::XMFLOAT3{0,   0,   0},},
-        },
-        std::vector<unsigned short>
-        {
-            0,2,1, // -x
-            1,2,3,
-
-            4,5,6, // +x
-            5,7,6,
-
-            0,1,5, // -y
-            0,5,4,
-
-            2,6,7, // +y
-            2,7,3,
-
-            0,4,6, // -z
-            0,6,2,
-
-            1,3,7, // +z
-            1,7,5,
+            indices.push_back((unsigned short)(start_index + (2 * i + vertex)%(2*slice_count)  ));
         }
-    };
+        for (const auto vertex : { 1,3,2 })
+        {
+            indices.push_back((unsigned short)(start_index + (2 * i + vertex) % (2*slice_count)));
+        }
+        indices.push_back((unsigned short)(start_index + 2 * i));
+        indices.push_back((unsigned short)(start_index + (2 * i + 2) % (2 * slice_count)));
+        indices.push_back((unsigned short)(start_index - 1));
+        indices.push_back((unsigned short)(start_index + (2 * i + 1)%(2*slice_count)));
+        indices.push_back((unsigned short)(start_index - 2));
+        indices.push_back((unsigned short)(start_index + (2 * i + 3) % (2 * slice_count)));
+    }
+    return { vertices, indices};
 }
 
-bool process_messages()
+static bool process_messages()
 {
     bool done = false;
-    // Poll and handle messages (inputs, window resize, etc.)
-    // See the WndProc() function below for our to dispatch events to the Win32 backend.
     MSG msg;
     while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
     {
@@ -76,19 +55,6 @@ bool process_messages()
             done = true;
     }
     return done;
-}
-
-void draw_vertices(application_basics& app, const vertex_representation& vertices, global_resources& application_resources)
-{
-    frame_resources frame_res = app.d3dDevice.prepare_frame_resources(vertices);
-    app.update_constant_struct(application_resources.constant_buffer);
-    app.clear_render_target_view();
-    Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = app.create_depth_stencil();
-    Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = app.d3dDevice.create_depth_stencil_view(m_pDepthStencil);
-    app.set_depth_stencil_to_scene(m_pDepthStencilView);
-    app.d3dDevice.set_buffers(frame_res.vertex_buffer, frame_res.index_buffer);
-    app.d3dDevice.setup_shaders(application_resources.vertex_shader, application_resources.constant_buffer, application_resources.pixel_shader);
-    app.d3dDevice.draw_scene(frame_res.m_indexCount);
 }
 
 int main(int, char**)
@@ -116,7 +82,7 @@ int main(int, char**)
         }                             
         gui.present_using_imgui();
         vertex_representation vertices = calc_vertices({ gui.prescription.data(), gui.prescription.size()});
-        draw_vertices(app, vertices, application_resources);
+        app.draw_vertices(vertices, application_resources);
     }
         
     return 0;
