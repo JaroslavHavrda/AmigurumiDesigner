@@ -20,6 +20,42 @@ void setup_imgui()
     ImGui::StyleColorsLight();
 }
 
+struct MousePosition
+{
+    int x = 0;
+    int y = 0;
+};
+
+struct ViewportConfigurationManager
+{
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
+    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+    DirectX::XMVECTOR rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
+
+    MousePosition current_pos;
+    MousePosition drag_start;
+    bool dragging = false;
+
+    DirectX::XMVECTOR calc_eye() const;
+    DirectX::XMVECTOR calc_up() const;
+    void stop_dragging();
+    void reset_defaults();
+    void front_view();
+    void top_view();
+};
+
+
+ViewportConfigurationManager viewport_config;
+
+struct ConstantBufferStruct {
+    DirectX::XMFLOAT4X4 world;
+    DirectX::XMFLOAT4X4 view;
+    DirectX::XMFLOAT4X4 projection;
+};
+
+static_assert((sizeof(ConstantBufferStruct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
+
 ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
 {
     ConstantBufferStruct m_constantBufferData{};
@@ -129,6 +165,9 @@ void test_hresult(HRESULT hr, const char* message)
         throw std::runtime_error(message);
     }
 }
+
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -646,5 +685,3 @@ imgui_win32_holder::~imgui_win32_holder()
 {
     ImGui_ImplWin32_Shutdown();
 }
-
-ViewportConfigurationManager viewport_config;

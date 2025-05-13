@@ -1,5 +1,7 @@
 #pragma once
 
+#define NOMINMAX
+
 #include "imgui.h"
 #include <array>
 #include <Windows.h>
@@ -10,39 +12,9 @@
 #include <vector>
 #include <optional>
 
-// Forward declare message handler from imgui_impl_win32.cpp
-IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-struct MousePosition
-{
-    int x = 0;
-    int y = 0;
-};
-
-struct ViewportConfigurationManager
-{
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
-    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
-    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-    DirectX::XMVECTOR rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
-
-    MousePosition current_pos;
-    MousePosition drag_start;
-    bool dragging = false;
-
-    DirectX::XMVECTOR calc_eye() const;
-    DirectX::XMVECTOR calc_up() const;
-    void stop_dragging();
-    void reset_defaults();
-    void front_view();
-    void top_view();
-};
-
-extern ViewportConfigurationManager viewport_config;
-
 struct gui_wrapper
 {
-    std::array<char, 500> prescription{ 0 };
+    std::array<char, 500> prescription{ '1'};
 
     void present_using_imgui();
 };
@@ -73,21 +45,12 @@ struct WindowClassWrapper
 
 };
 
-struct ConstantBufferStruct {
-    DirectX::XMFLOAT4X4 world;
-    DirectX::XMFLOAT4X4 view;
-    DirectX::XMFLOAT4X4 projection;
-};
-static_assert((sizeof(ConstantBufferStruct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
-
 struct rotation_data_gui
 {
     float roll{ 0 };
     float pitch{ 0 };
     float yaw{ 0 };
 };
-
-ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc);
 
 struct frame_resources
 {
