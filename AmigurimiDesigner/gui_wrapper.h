@@ -67,8 +67,8 @@ struct VertexPositionColor
 
 struct vertex_representation
 {
-    std::vector<VertexPositionColor> CubeVertices;
-    std::vector<unsigned short> CubeIndices;
+    std::vector<VertexPositionColor> vertices;
+    std::vector<unsigned short> indices;
 };
 
 void test_hresult(HRESULT hr, const char* message);

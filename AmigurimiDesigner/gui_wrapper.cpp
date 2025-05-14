@@ -454,9 +454,9 @@ Microsoft::WRL::ComPtr <ID3D11Buffer> D3DDeviceHolder::create_index_buffer(std::
 frame_resources D3DDeviceHolder::prepare_frame_resources(const vertex_representation& vertices)
 {
     return {
-            .vertex_buffer = create_vertex_buffer(vertices.CubeVertices),
-            .index_buffer = create_index_buffer(vertices.CubeIndices),
-            .m_indexCount = (UINT)vertices.CubeIndices.size(),
+            .vertex_buffer = create_vertex_buffer(vertices.vertices),
+            .index_buffer = create_index_buffer(vertices.indices),
+            .m_indexCount = (UINT)vertices.indices.size(),
     };
 }
 
@@ -684,4 +684,4 @@ imgui_win32_holder::imgui_win32_holder(HWND hwnd)
 imgui_win32_holder::~imgui_win32_holder()
 {
     ImGui_ImplWin32_Shutdown();
-}
+} 
