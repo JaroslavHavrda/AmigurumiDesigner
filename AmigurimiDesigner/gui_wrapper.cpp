@@ -273,7 +273,7 @@ void ViewportConfigurationManager::stop_dragging()
 
 void ViewportConfigurationManager::reset_defaults()
 {
-    eye = DirectX::XMVectorSet(0.0f, 0.7f, 1.5f, 0.f);
+    eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
     at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
     rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
