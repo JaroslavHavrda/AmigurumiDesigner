@@ -9,6 +9,7 @@
 
 #include <fstream>
 #include <vector>
+#include <optional>
 
 void setup_imgui()
 {
@@ -105,6 +106,15 @@ ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
     return m_constantBufferData;
 }
 
+void test_hresult(HRESULT hr, const char* message)
+{
+    if (hr != S_OK)
+    {
+        throw std::runtime_error(message);
+    }
+}
+
+
 D3DDeviceHolder init_d3d_device(HWND hWnd)
 {
     D3DDeviceHolder device_holder;
@@ -156,14 +166,6 @@ render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice)
     res = d3ddevice.g_pd3dDevice->CreateRenderTargetView(target.pBackBuffer.Get(), nullptr, target.g_mainRenderTargetView.GetAddressOf());
     test_hresult(res, "could not create render target view");
     return target;
-}
-
-void test_hresult(HRESULT hr, const char* message)
-{
-    if (hr != S_OK)
-    {
-        throw std::runtime_error(message);
-    }
 }
 
 // Forward declare message handler from imgui_impl_win32.cpp
@@ -672,6 +674,19 @@ void application_basics::set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D
     );
 }
 
+void application_basics::draw_vertices(const vertex_representation& vertices, global_resources& application_resources)
+{
+    frame_resources frame_res = d3dDevice.prepare_frame_resources(vertices);
+    update_constant_struct(application_resources.constant_buffer);
+    clear_render_target_view();
+    Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = create_depth_stencil();
+    Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = d3dDevice.create_depth_stencil_view(m_pDepthStencil);
+    set_depth_stencil_to_scene(m_pDepthStencilView);
+    d3dDevice.set_buffers(frame_res.vertex_buffer, frame_res.index_buffer);
+    d3dDevice.setup_shaders(application_resources.vertex_shader, application_resources.constant_buffer, application_resources.pixel_shader);
+    d3dDevice.draw_scene(frame_res.m_indexCount);
+}
+
 imgui_win32_holder::imgui_win32_holder(HWND hwnd)
 {
     auto res = ImGui_ImplWin32_Init(hwnd);
@@ -684,4 +699,4 @@ imgui_win32_holder::imgui_win32_holder(HWND hwnd)
 imgui_win32_holder::~imgui_win32_holder()
 {
     ImGui_ImplWin32_Shutdown();
-} 
+}
