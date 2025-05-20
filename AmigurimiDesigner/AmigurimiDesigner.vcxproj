@@ -169,7 +169,7 @@
     <None Include="vcpkg.json" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="gui_wrapper.cpp" />
+    <ClCompile Include="gui_wrapper.ixx" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -187,8 +187,7 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="D3DDeviceHolder.h" />
-    <ClInclude Include="gui_wrapper.h" />
+    <ClInclude Include="imgui_hack.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

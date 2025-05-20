@@ -1,5 +1,7 @@
-#include "gui_wrapper.h"
+import gui_wrapper;
 
+#define NOMINMAX
+#include <Windows.h>
 #include <cmath>
 #include <optional>
 #include <vector>
@@ -9,9 +11,9 @@
 #include <ranges>
 #include <limits>
 #include <iostream>
+#include <directxmath.h>
 
 // Data
-UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
 
 void test_vertex_vector_size(std::vector<VertexPositionColor> & vertices)
 {
