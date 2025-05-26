@@ -103,8 +103,8 @@ static vertex_representation calc_vertices(const std::vector<float> & diameters)
         
         if (!first_slice)
         {
-            float distance_difference = previous_diameter - diameter;
-            float length = 5.;
+            float distance_difference = (previous_diameter - diameter)/2;
+            float length = 4.;
             float height = std::sqrt(length * length - distance_difference * distance_difference);
 
             draw_side(vert_res, diameter, previous_diameter, slice_count, level, height);
