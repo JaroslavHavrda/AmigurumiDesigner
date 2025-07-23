@@ -49,6 +49,14 @@ export struct vertex_representation
     std::vector<unsigned short> indices;
 };
 
+void test_hresult(HRESULT hr, const char* message)
+{
+    if (hr != S_OK)
+    {
+        throw std::runtime_error(message);
+    }
+}
+
 struct D3DDeviceHolder
 {
     Microsoft::WRL::ComPtr<ID3D11Device> g_pd3dDevice;
@@ -62,10 +70,71 @@ struct D3DDeviceHolder
     Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices) const;
     Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(std::vector<unsigned short> CubeIndices) const;
     frame_resources prepare_frame_resources(const vertex_representation& vertices);
-    Microsoft::WRL::ComPtr <ID3D11DepthStencilView> create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil) const;
-    void set_buffers(Microsoft::WRL::ComPtr <ID3D11Buffer>& vertex_buffer, Microsoft::WRL::ComPtr < ID3D11Buffer>& index_buffer) const;
+    Microsoft::WRL::ComPtr <ID3D11DepthStencilView> create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil) const
+    {
+        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
+        CD3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc(D3D11_DSV_DIMENSION_TEXTURE2D);
+
+        HRESULT hr = g_pd3dDevice->CreateDepthStencilView(
+            m_pDepthStencil.Get(),
+            &depthStencilViewDesc,
+            m_pDepthStencilView.GetAddressOf()
+        );
+        test_hresult(hr, "could not create depth stencil view");
+
+        return m_pDepthStencilView;
+    }
+
+    void set_buffers(Microsoft::WRL::ComPtr <ID3D11Buffer>& vertex_buffer, Microsoft::WRL::ComPtr < ID3D11Buffer>& index_buffer) const
+    {
+        // Set up the IA stage by setting the input topology and layout.
+        UINT stride = sizeof(VertexPositionColor);
+        UINT offset = 0;
+
+        g_pd3dDeviceContext->IASetVertexBuffers(
+            0,
+            1,
+            vertex_buffer.GetAddressOf(),
+            &stride,
+            &offset
+        );
+
+        g_pd3dDeviceContext->IASetIndexBuffer(
+            index_buffer.Get(),
+            DXGI_FORMAT_R16_UINT,
+            0
+        );
+
+        g_pd3dDeviceContext->IASetPrimitiveTopology(
+            D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+        );
+    }
+
     void setup_shaders(const vertex_shader_holder& vertex_shader,
-        Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader) const;
+        Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader) const
+    {
+        g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
+
+        // Set up the vertex shader stage.
+        g_pd3dDeviceContext->VSSetShader(
+            vertex_shader.m_pVertexShader.Get(),
+            nullptr,
+            0
+        );
+
+        g_pd3dDeviceContext->VSSetConstantBuffers(
+            0,
+            (UINT)1,
+            constant_buffer.GetAddressOf()
+        );
+
+        // Set up the pixel shader stage.
+        g_pd3dDeviceContext->PSSetShader(
+            pixel_shader.Get(),
+            nullptr,
+            0
+        );
+    }
     void draw_scene(int m_indexCount) const;
 };
 
@@ -73,7 +142,7 @@ D3DDeviceHolder init_d3d_device(HWND hWnd);
 
 export struct gui_wrapper
 {
-    std::array<char, 500> prescription{ '1' };
+    std::array<char, 500> prescription{ '1', ',', '5', ',', '1', ',', '5'};
 
     void present_using_imgui();
 };
@@ -118,27 +187,67 @@ struct HwndWrapper
 {
     HWND hwnd;
 
-    HwndWrapper(WNDCLASSEXW& wc);
-    ~HwndWrapper();
-    void show_window() const;
+    HwndWrapper(WNDCLASSEXW& wc)
+    {
+        hwnd = ::CreateWindowW(wc.lpszClassName, L"Amigurumi designer", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
+        if (hwnd == NULL)
+        {
+            throw std::runtime_error("could not creatw window");
+        }
+    }
+    ~HwndWrapper()
+    {
+        ::DestroyWindow(hwnd);
+    }
+    void show_window() const
+    {
+        ::ShowWindow(hwnd, SW_SHOWDEFAULT);
+        ::UpdateWindow(hwnd);
+    }
 };
 
 struct imgui_context_holder
 {
-    imgui_context_holder();
-    ~imgui_context_holder();
+    imgui_context_holder()
+    {
+        ImGui::CreateContext();
+    }
+    ~imgui_context_holder()
+    {
+        ImGui::DestroyContext();
+    }
 };
 
 struct imgui_win32_holder
 {
-    imgui_win32_holder(HWND hwnd);
-    ~imgui_win32_holder();
+    imgui_win32_holder(HWND hwnd)
+    {
+        auto res = ImGui_ImplWin32_Init(hwnd);
+        if (!res)
+        {
+            throw std::runtime_error("could not init imgui win32");
+        }
+    }
+    ~imgui_win32_holder()
+    {
+        ImGui_ImplWin32_Shutdown();
+    }
 };
 
 struct imgui_dx11_holder
 {
-    imgui_dx11_holder(ID3D11Device* g_pd3dDevice, ID3D11DeviceContext* g_pd3dDeviceContext);
-    ~imgui_dx11_holder();
+    imgui_dx11_holder(ID3D11Device* g_pd3dDevice, ID3D11DeviceContext* g_pd3dDeviceContext)
+    {
+        auto res = ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+        if (!res)
+        {
+            throw std::runtime_error("could not init imgui DX11");
+        }
+    }
+    ~imgui_dx11_holder()
+    {
+        ImGui_ImplDX11_Shutdown();
+    }
 };
 
 struct imgui_holder
@@ -147,37 +256,22 @@ struct imgui_holder
     imgui_win32_holder imgui_win32;
     imgui_dx11_holder imgui_dx11;
 
-    imgui_holder(HWND hwnd, Microsoft::WRL::ComPtr<ID3D11Device>& g_pd3dDevice, Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext);
+    imgui_holder(HWND hwnd, Microsoft::WRL::ComPtr<ID3D11Device>& g_pd3dDevice, Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext) :
+        imgui_context{},
+        imgui_win32{ hwnd },
+        imgui_dx11{ g_pd3dDevice.Get(), g_pd3dDeviceContext.Get() }
+    {
+
+    }
 };
 
 render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice);
 
-export struct application_basics
-{
-    WindowClassWrapper window_class;
-    HwndWrapper window{ window_class.wc };
-    D3DDeviceHolder d3dDevice = init_d3d_device(window.hwnd);
-    std::optional<render_target_view_holder> target_view = init_render_target_view(d3dDevice);
-    imgui_holder imgui_instance{ window.hwnd, d3dDevice.g_pd3dDevice, d3dDevice.g_pd3dDeviceContext };
-
-    application_basics();
-    void update_after_resize();
-    void clear_render_target_view();
-    void update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer);
-    Microsoft::WRL::ComPtr <ID3D11Texture2D> create_depth_stencil();
-    void set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DepthStencilView>& m_pDepthStencilView);
-    void draw_vertices(const vertex_representation& vertices, global_resources& application_resources);
+struct ConstantBufferStruct {
+    DirectX::XMFLOAT4X4 world;
+    DirectX::XMFLOAT4X4 view;
+    DirectX::XMFLOAT4X4 projection;
 };
-
-void setup_imgui()
-{
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-    // Setup Dear ImGui style
-    ImGui::StyleColorsLight();
-}
 
 struct MousePosition
 {
@@ -190,57 +284,49 @@ struct ViewportConfigurationManager
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-    DirectX::XMVECTOR rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
 
     MousePosition current_pos;
     MousePosition drag_start;
     bool dragging = false;
+    bool right_dragging = false;
 
     DirectX::XMVECTOR calc_eye() const;
     DirectX::XMVECTOR calc_up() const;
+    DirectX::XMVECTOR calc_at() const;
     void stop_dragging();
     void reset_defaults();
     void front_view();
     void top_view();
 };
 
-
 ViewportConfigurationManager viewport_config;
-
-struct ConstantBufferStruct {
-    DirectX::XMFLOAT4X4 world;
-    DirectX::XMFLOAT4X4 view;
-    DirectX::XMFLOAT4X4 projection;
-};
-
-static_assert((sizeof(ConstantBufferStruct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
 
 ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
 {
+    using namespace DirectX;
     ConstantBufferStruct m_constantBufferData{};
+
+    auto eye = viewport_config.calc_eye();
+    auto at = viewport_config.calc_at();
+    auto center_direction = eye - at;
+    auto distance = DirectX::XMVectorGetByIndex(DirectX::XMVector3Length(center_direction), 0);
 
     DirectX::XMStoreFloat4x4(
         &m_constantBufferData.view,
         DirectX::XMMatrixTranspose(
             DirectX::XMMatrixLookAtRH(
                 viewport_config.calc_eye(),
-                viewport_config.at,
+                viewport_config.calc_at(),
                 viewport_config.calc_up()
             )
         )
     );
 
-    float aspectRatioX = static_cast<float>(m_bbDesc.Width) / static_cast<float>(m_bbDesc.Height);
-    float aspectRatioY = aspectRatioX < (16.0f / 9.0f) ? aspectRatioX / (16.0f / 9.0f) : 1.0f;
-
     DirectX::XMStoreFloat4x4(
         &m_constantBufferData.projection,
         DirectX::XMMatrixTranspose(
-            DirectX::XMMatrixPerspectiveFovRH(
-                2.0f * std::atan(std::tan(DirectX::XMConvertToRadians(70) * 0.5f) / aspectRatioY),
-                aspectRatioX,
-                0.01f,
-                100.0f
+            DirectX::XMMatrixOrthographicRH(
+                (float)m_bbDesc.Width / 1000 * distance, (float)m_bbDesc.Height / 1000 * distance, 0, 1000
             )
         )
     );
@@ -264,14 +350,111 @@ ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
     return m_constantBufferData;
 }
 
-void test_hresult(HRESULT hr, const char* message)
+void setup_imgui()
 {
-    if (hr != S_OK)
-    {
-        throw std::runtime_error(message);
-    }
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsLight();
 }
 
+export struct application_basics
+{
+    WindowClassWrapper window_class;
+    HwndWrapper window{ window_class.wc };
+    D3DDeviceHolder d3dDevice = init_d3d_device(window.hwnd);
+    std::optional<render_target_view_holder> target_view = init_render_target_view(d3dDevice);
+    imgui_holder imgui_instance{ window.hwnd, d3dDevice.g_pd3dDevice, d3dDevice.g_pd3dDeviceContext };
+
+    application_basics()
+    {
+        window.show_window();
+        IMGUI_CHECKVERSION();
+        setup_imgui();
+    }
+    void update_after_resize()
+    {
+        target_view = std::optional<render_target_view_holder>{};
+        d3dDevice.g_pd3dDeviceContext->ClearState();
+        d3dDevice.g_pd3dDeviceContext->Flush();
+        HRESULT hr = d3dDevice.g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
+        test_hresult(hr, "could not resize buffers");
+        target_view = init_render_target_view(d3dDevice);
+    }
+    void clear_render_target_view()
+    {
+        const float teal[] = { 0.098f, 0.439f, 0.439f, 1.000f };
+        d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
+            target_view->g_mainRenderTargetView.Get(),
+            teal
+        );
+    }
+    void update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer)
+    {
+        auto constant_struct = calculate_projections(target_view->m_bbDesc);
+
+        d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
+            constant_buffer.Get(),
+            0,
+            nullptr,
+            &(constant_struct),
+            0,
+            0
+        );
+    }
+    Microsoft::WRL::ComPtr <ID3D11Texture2D> create_depth_stencil()
+    {
+        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
+        CD3D11_TEXTURE2D_DESC depthStencilDesc(
+            DXGI_FORMAT_D24_UNORM_S8_UINT,
+            static_cast<UINT> (target_view->m_bbDesc.Width),
+            static_cast<UINT> (target_view->m_bbDesc.Height),
+            1, // This depth stencil view has only one texture.
+            1, // Use a single mipmap level.
+            D3D11_BIND_DEPTH_STENCIL
+        );
+
+        HRESULT res = d3dDevice.g_pd3dDevice->CreateTexture2D(
+            &depthStencilDesc,
+            nullptr,
+            m_pDepthStencil.GetAddressOf()
+        );
+        test_hresult(res, "could not create depth stencil");
+
+        return m_pDepthStencil;
+    }
+    void set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DepthStencilView>& m_pDepthStencilView)
+    {
+        d3dDevice.g_pd3dDeviceContext->ClearDepthStencilView(
+            m_pDepthStencilView.Get(),
+            D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
+            1.0f,
+            0);
+
+        // Set the render target.
+        d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(
+            1,
+            target_view->g_mainRenderTargetView.GetAddressOf(),
+            m_pDepthStencilView.Get()
+        );
+    }
+    void draw_vertices(const vertex_representation& vertices, global_resources& application_resources)
+    {
+        frame_resources frame_res = d3dDevice.prepare_frame_resources(vertices);
+        update_constant_struct(application_resources.constant_buffer);
+        clear_render_target_view();
+        Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = create_depth_stencil();
+        Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = d3dDevice.create_depth_stencil_view(m_pDepthStencil);
+        set_depth_stencil_to_scene(m_pDepthStencilView);
+        d3dDevice.set_buffers(frame_res.vertex_buffer, frame_res.index_buffer);
+        d3dDevice.setup_shaders(application_resources.vertex_shader, application_resources.constant_buffer, application_resources.pixel_shader);
+        d3dDevice.draw_scene(frame_res.m_indexCount);
+    }
+};
+
+static_assert((sizeof(ConstantBufferStruct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
 
 D3DDeviceHolder init_d3d_device(HWND hWnd)
 {
@@ -362,10 +545,25 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         viewport_config.dragging = true;
         return 0;
     }
+    case WM_RBUTTONDOWN:
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.WantCaptureMouse)
+        {
+            return 0;
+        }
+        viewport_config.current_pos.x = GET_X_LPARAM(lParam);
+        viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
+        viewport_config.drag_start.x = GET_X_LPARAM(lParam);
+        viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
+        viewport_config.right_dragging = true;
+        return 0;
+    }
     case WM_MOUSEMOVE:
         viewport_config.current_pos.x = GET_X_LPARAM(lParam);
         viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
         return 0;
+    case WM_RBUTTONUP:
     case WM_LBUTTONUP:
         viewport_config.stop_dragging();
         return 0;
@@ -389,21 +587,33 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 DirectX::XMVECTOR ViewportConfigurationManager::calc_eye() const
 {
     using namespace DirectX;
-    if (!dragging)
-    {
-        return eye;
-    }
-    auto center_direction = eye - rotation_center;
+    auto center_direction = eye - at;
     auto distance = XMVector3Length(center_direction);
     auto normalized_direction = XMVector3Normalize(center_direction);
-    float y_diff = (float)current_pos.y - drag_start.y;
-    float x_diff = (float)current_pos.x - drag_start.x;
+    float y_diff = dragging ? ((float)current_pos.y - drag_start.y) : 0;
+    float x_diff = dragging ? ((float)current_pos.x - drag_start.x) : 0;
     auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
     auto real_up = XMVector3Cross(normalized_direction, left);
     auto final_direction = normalized_direction + y_diff / 500 * real_up - x_diff / 500 * left;
     auto normalized_resulting_direction = XMVector3Normalize(final_direction);
 
-    return rotation_center + distance * normalized_resulting_direction;
+    return calc_at() + distance * normalized_resulting_direction;
+}
+
+DirectX::XMVECTOR ViewportConfigurationManager::calc_at() const
+{
+    using namespace DirectX;
+    if (!right_dragging)
+    {
+        return at;
+    }
+    auto center_direction = eye - at;
+    auto normalized_direction = XMVector3Normalize(center_direction);
+    auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
+    auto real_up = XMVector3Cross(normalized_direction, left);
+    float y_diff = (float)current_pos.y - drag_start.y;
+    float x_diff = (float)current_pos.x - drag_start.x;
+    return at + y_diff /60 * real_up - x_diff /60 * left;
 }
 
 DirectX::XMVECTOR ViewportConfigurationManager::calc_up() const
@@ -413,10 +623,10 @@ DirectX::XMVECTOR ViewportConfigurationManager::calc_up() const
     {
         return up;
     }
-    auto original_direction = eye - rotation_center;
+    auto original_direction = eye - at;
     auto left = -XMVector3Cross(original_direction, up);
     auto new_eye = calc_eye();
-    auto new_diraction = new_eye - rotation_center;
+    auto new_diraction = new_eye - at;
     auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
     return new_up;
 }
@@ -425,9 +635,12 @@ void ViewportConfigurationManager::stop_dragging()
 {
     auto new_eye = calc_eye();
     auto new_up = calc_up();
+    auto new_at = calc_at();
     eye = new_eye;
     up = new_up;
+    at = new_at;
     dragging = false;
+    right_dragging = false;
 }
 
 void ViewportConfigurationManager::reset_defaults()
@@ -435,7 +648,6 @@ void ViewportConfigurationManager::reset_defaults()
     eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
     at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-    rotation_center = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
 }
 
 void ViewportConfigurationManager::front_view()
@@ -445,7 +657,6 @@ void ViewportConfigurationManager::front_view()
     auto distance = XMVector3Length(center_direction);
     at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-    rotation_center = XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
     eye = at + distance * XMVectorSet(0.0f, 0.f, 1.f, 0.f);
 }
 
@@ -456,7 +667,6 @@ void ViewportConfigurationManager::top_view()
     auto distance = XMVector3Length(center_direction);
     at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = XMVectorSet(0.0f, 0.0f, -1.0f, 0.f);
-    rotation_center = XMVectorSet(0.0f, 0.0f, 0.0f, 0.f);
     eye = at + distance * XMVectorSet(0.0f, 1.f, 0.f, 0.f);
 }
 
@@ -619,72 +829,6 @@ frame_resources D3DDeviceHolder::prepare_frame_resources(const vertex_representa
     };
 }
 
-Microsoft::WRL::ComPtr <ID3D11DepthStencilView> D3DDeviceHolder::create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil) const
-{
-    Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
-    CD3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc(D3D11_DSV_DIMENSION_TEXTURE2D);
-
-    HRESULT hr = g_pd3dDevice->CreateDepthStencilView(
-        m_pDepthStencil.Get(),
-        &depthStencilViewDesc,
-        m_pDepthStencilView.GetAddressOf()
-    );
-    test_hresult(hr, "could not create depth stencil view");
-
-    return m_pDepthStencilView;
-}
-
-void D3DDeviceHolder::set_buffers(Microsoft::WRL::ComPtr <ID3D11Buffer>& vertex_buffer, Microsoft::WRL::ComPtr < ID3D11Buffer>& index_buffer) const
-{
-    // Set up the IA stage by setting the input topology and layout.
-    UINT stride = sizeof(VertexPositionColor);
-    UINT offset = 0;
-
-    g_pd3dDeviceContext->IASetVertexBuffers(
-        0,
-        1,
-        vertex_buffer.GetAddressOf(),
-        &stride,
-        &offset
-    );
-
-    g_pd3dDeviceContext->IASetIndexBuffer(
-        index_buffer.Get(),
-        DXGI_FORMAT_R16_UINT,
-        0
-    );
-
-    g_pd3dDeviceContext->IASetPrimitiveTopology(
-        D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
-    );
-}
-
-void D3DDeviceHolder::setup_shaders(const vertex_shader_holder& vertex_shader,
-    Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader) const
-{
-    g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
-
-    // Set up the vertex shader stage.
-    g_pd3dDeviceContext->VSSetShader(
-        vertex_shader.m_pVertexShader.Get(),
-        nullptr,
-        0
-    );
-
-    g_pd3dDeviceContext->VSSetConstantBuffers(
-        0,
-        (UINT)1,
-        constant_buffer.GetAddressOf()
-    );
-
-    // Set up the pixel shader stage.
-    g_pd3dDeviceContext->PSSetShader(
-        pixel_shader.Get(),
-        nullptr,
-        0
-    );
-}
-
 void D3DDeviceHolder::draw_scene(int m_indexCount) const
 {
     // Calling Draw tells Direct3D to start sending commands to the graphics device.
@@ -699,161 +843,4 @@ void D3DDeviceHolder::draw_scene(int m_indexCount) const
     // Present
     HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
     test_hresult(hr, "could not draw");
-}
-
-HwndWrapper::HwndWrapper(WNDCLASSEXW& wc)
-{
-    hwnd = ::CreateWindowW(wc.lpszClassName, L"Amigurumi designer", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
-    if (hwnd == NULL)
-    {
-        throw std::runtime_error("could not creatw window");
-    }
-}
-
-HwndWrapper::~HwndWrapper()
-{
-    ::DestroyWindow(hwnd);
-}
-
-void HwndWrapper::show_window() const
-{
-    ::ShowWindow(hwnd, SW_SHOWDEFAULT);
-    ::UpdateWindow(hwnd);
-}
-
-imgui_context_holder::imgui_context_holder()
-{
-    ImGui::CreateContext();
-}
-
-imgui_context_holder::~imgui_context_holder()
-{
-    ImGui::DestroyContext();
-}
-
-imgui_dx11_holder::imgui_dx11_holder(ID3D11Device* g_pd3dDevice, ID3D11DeviceContext* g_pd3dDeviceContext)
-{
-    auto res = ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
-    if (!res)
-    {
-        throw std::runtime_error("could not init imgui DX11");
-    }
-}
-
-imgui_dx11_holder::~imgui_dx11_holder()
-{
-    ImGui_ImplDX11_Shutdown();
-}
-
-imgui_holder::imgui_holder(HWND hwnd, Microsoft::WRL::ComPtr<ID3D11Device>& g_pd3dDevice, Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext) :
-    imgui_context{},
-    imgui_win32{ hwnd },
-    imgui_dx11{ g_pd3dDevice.Get(), g_pd3dDeviceContext.Get() }
-{
-
-}
-
-application_basics::application_basics()
-{
-    window.show_window();
-    IMGUI_CHECKVERSION();
-    setup_imgui();
-}
-
-void application_basics::update_after_resize()
-{
-    target_view = std::optional<render_target_view_holder>{};
-    d3dDevice.g_pd3dDeviceContext->ClearState();
-    d3dDevice.g_pd3dDeviceContext->Flush();
-    HRESULT hr = d3dDevice.g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
-    test_hresult(hr, "could not resize buffers");
-    target_view = init_render_target_view(d3dDevice);
-}
-
-void application_basics::clear_render_target_view()
-{
-    const float teal[] = { 0.098f, 0.439f, 0.439f, 1.000f };
-    d3dDevice.g_pd3dDeviceContext->ClearRenderTargetView(
-        target_view->g_mainRenderTargetView.Get(),
-        teal
-    );
-}
-
-void application_basics::update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer)
-{
-    auto constant_struct = calculate_projections(target_view->m_bbDesc);
-
-    d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
-        constant_buffer.Get(),
-        0,
-        nullptr,
-        &(constant_struct),
-        0,
-        0
-    );
-}
-
-Microsoft::WRL::ComPtr <ID3D11Texture2D> application_basics::create_depth_stencil()
-{
-    Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil;
-    CD3D11_TEXTURE2D_DESC depthStencilDesc(
-        DXGI_FORMAT_D24_UNORM_S8_UINT,
-        static_cast<UINT> (target_view->m_bbDesc.Width),
-        static_cast<UINT> (target_view->m_bbDesc.Height),
-        1, // This depth stencil view has only one texture.
-        1, // Use a single mipmap level.
-        D3D11_BIND_DEPTH_STENCIL
-    );
-
-    HRESULT res = d3dDevice.g_pd3dDevice->CreateTexture2D(
-        &depthStencilDesc,
-        nullptr,
-        m_pDepthStencil.GetAddressOf()
-    );
-    test_hresult(res, "could not create depth stencil");
-
-    return m_pDepthStencil;
-}
-
-void application_basics::set_depth_stencil_to_scene(Microsoft::WRL::ComPtr <ID3D11DepthStencilView>& m_pDepthStencilView)
-{
-    d3dDevice.g_pd3dDeviceContext->ClearDepthStencilView(
-        m_pDepthStencilView.Get(),
-        D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
-        1.0f,
-        0);
-
-    // Set the render target.
-    d3dDevice.g_pd3dDeviceContext->OMSetRenderTargets(
-        1,
-        target_view->g_mainRenderTargetView.GetAddressOf(),
-        m_pDepthStencilView.Get()
-    );
-}
-
-void application_basics::draw_vertices(const vertex_representation& vertices, global_resources& application_resources)
-{
-    frame_resources frame_res = d3dDevice.prepare_frame_resources(vertices);
-    update_constant_struct(application_resources.constant_buffer);
-    clear_render_target_view();
-    Microsoft::WRL::ComPtr <ID3D11Texture2D> m_pDepthStencil = create_depth_stencil();
-    Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView = d3dDevice.create_depth_stencil_view(m_pDepthStencil);
-    set_depth_stencil_to_scene(m_pDepthStencilView);
-    d3dDevice.set_buffers(frame_res.vertex_buffer, frame_res.index_buffer);
-    d3dDevice.setup_shaders(application_resources.vertex_shader, application_resources.constant_buffer, application_resources.pixel_shader);
-    d3dDevice.draw_scene(frame_res.m_indexCount);
-}
-
-imgui_win32_holder::imgui_win32_holder(HWND hwnd)
-{
-    auto res = ImGui_ImplWin32_Init(hwnd);
-    if (!res)
-    {
-        throw std::runtime_error("could not init imgui win32");
-    }
-}
-
-imgui_win32_holder::~imgui_win32_holder()
-{
-    ImGui_ImplWin32_Shutdown();
 }
