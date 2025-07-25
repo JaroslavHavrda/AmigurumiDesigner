@@ -12,6 +12,7 @@ import gui_wrapper;
 #include <limits>
 #include <iostream>
 #include <directxmath.h>
+#include <numeric>
 
 // Data
 
@@ -84,37 +85,44 @@ static void draw_side(vertex_representation & vr , float diameter, float previou
     test_vertex_vector_size(vr.vertices);
 }
 
-static vertex_representation calc_vertices(const std::vector<float> & diameters)
+float layer_height(float previous_radius, float radius)
+{
+    float distance_difference = (previous_radius - radius);
+    float length = 4.;
+    float height = std::sqrt(length * length - distance_difference * distance_difference);
+    return height;
+}
+
+static vertex_representation calc_vertices(const std::vector<float> & radiuses)
 {
     std::vector<VertexPositionColor> vertices{};
     std::vector<unsigned short> indices{};
     vertex_representation vert_res{vertices, indices};
     float level = 0.;
-    float previous_diameter = 0.;
+    float previous_radius = 0.;
     bool first_slice = true;
     constexpr int slice_count = 33;
     vert_res.vertices = vertices;
-    for (const auto &diameter: diameters)
+    for (const auto &radius: radiuses)
     {
         if (first_slice)
         {
-            draw_bottom_lid(vert_res, diameter, slice_count);
+            draw_bottom_lid(vert_res, radius, slice_count);
         }
         
         if (!first_slice)
         {
-            float distance_difference = (previous_diameter - diameter)/2;
-            float length = 4.;
-            float height = std::sqrt(length * length - distance_difference * distance_difference);
+            float height = layer_height(previous_radius, radius);
+            
 
-            draw_side(vert_res, diameter, previous_diameter, slice_count, level, height);
+            draw_side(vert_res, radius, previous_radius, slice_count, level, height);
             level += height;
         }
                 
-        previous_diameter = diameter;
+        previous_radius = radius;
         first_slice = false;
     }
-    draw_top_lid(vert_res, previous_diameter, slice_count, level);
+    draw_top_lid(vert_res, previous_radius, slice_count, level);
     std::cout << std::endl;
     return vert_res;
 }
@@ -183,8 +191,24 @@ int main(int, char**)
         {
             app.update_after_resize();
             g_ResizeWidth = g_ResizeHeight = 0;
-        }                             
-        gui.present_using_imgui();
+        }
+        float height = 5;
+        float previous_radius = 0.;
+        bool first_slice = true;
+        if (prescription.parsed_numbers.size() > 1)
+        {
+            for (const auto& radius : prescription.parsed_numbers)
+            {
+                if (!first_slice)
+                {
+                    height += layer_height(previous_radius, radius);
+                }
+
+                previous_radius = radius;
+                first_slice = false;
+            }
+        }
+        gui.present_using_imgui(height, app.target_view->m_bbDesc);
         prescription.update_prescription({ gui.prescription.data(), std::strlen( gui.prescription.data()) });
         vertex_representation vertices = calc_vertices( prescription.parsed_numbers);
         app.draw_vertices(vertices, application_resources);

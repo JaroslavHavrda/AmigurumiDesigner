@@ -142,9 +142,9 @@ D3DDeviceHolder init_d3d_device(HWND hWnd);
 
 export struct gui_wrapper
 {
-    std::array<char, 500> prescription{ '1', ',', '5', ',', '1', ',', '5'};
+    std::array<char, 500> prescription{ '1', ',', '4', ',', '1', ',', '4'};
 
-    void present_using_imgui();
+    void present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc);
 };
 
 export struct global_resources
@@ -285,6 +285,8 @@ struct ViewportConfigurationManager
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
 
+    float zoom_factor = 10;
+
     MousePosition current_pos;
     MousePosition drag_start;
     bool dragging = false;
@@ -297,6 +299,15 @@ struct ViewportConfigurationManager
     void reset_defaults();
     void front_view();
     void top_view();
+    void optimal_size( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc)
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        auto normalized_direction = XMVector3Normalize(center_direction);
+        zoom_factor = height * 2000 / m_bbDesc.Height;
+        eye = at + zoom_factor
+            * normalized_direction;
+    }
 };
 
 ViewportConfigurationManager viewport_config;
@@ -309,7 +320,6 @@ ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
     auto eye = viewport_config.calc_eye();
     auto at = viewport_config.calc_at();
     auto center_direction = eye - at;
-    auto distance = DirectX::XMVectorGetByIndex(DirectX::XMVector3Length(center_direction), 0);
 
     DirectX::XMStoreFloat4x4(
         &m_constantBufferData.view,
@@ -326,7 +336,7 @@ ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
         &m_constantBufferData.projection,
         DirectX::XMMatrixTranspose(
             DirectX::XMMatrixOrthographicRH(
-                (float)m_bbDesc.Width / 1000 * distance, (float)m_bbDesc.Height / 1000 * distance, 0, 1000
+                (float)m_bbDesc.Width / 1000 * viewport_config.zoom_factor, (float)m_bbDesc.Height / 1000 * viewport_config.zoom_factor, 0, 1000
             )
         )
     );
@@ -577,7 +587,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
         auto delta = (int16_t)HIWORD(wParam);
         auto scaling = exp(delta / 1200.);
-        viewport_config.eye *= (float)scaling;
+        viewport_config.zoom_factor *= (float)scaling;
         return 0;
     }
     }
@@ -588,7 +598,6 @@ DirectX::XMVECTOR ViewportConfigurationManager::calc_eye() const
 {
     using namespace DirectX;
     auto center_direction = eye - at;
-    auto distance = XMVector3Length(center_direction);
     auto normalized_direction = XMVector3Normalize(center_direction);
     float y_diff = dragging ? ((float)current_pos.y - drag_start.y) : 0;
     float x_diff = dragging ? ((float)current_pos.x - drag_start.x) : 0;
@@ -597,7 +606,7 @@ DirectX::XMVECTOR ViewportConfigurationManager::calc_eye() const
     auto final_direction = normalized_direction + y_diff / 500 * real_up - x_diff / 500 * left;
     auto normalized_resulting_direction = XMVector3Normalize(final_direction);
 
-    return calc_at() + distance * normalized_resulting_direction;
+    return calc_at() + zoom_factor * normalized_resulting_direction;
 }
 
 DirectX::XMVECTOR ViewportConfigurationManager::calc_at() const
@@ -648,29 +657,28 @@ void ViewportConfigurationManager::reset_defaults()
     eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
     at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+    zoom_factor = 10;
 }
 
 void ViewportConfigurationManager::front_view()
 {
     using namespace DirectX;
     auto center_direction = eye - at;
-    auto distance = XMVector3Length(center_direction);
     at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-    eye = at + distance * XMVectorSet(0.0f, 0.f, 1.f, 0.f);
+    eye = at + XMVectorSet(0.0f, 0.f, 1.f, 0.f);
 }
 
 void ViewportConfigurationManager::top_view()
 {
     using namespace DirectX;
     auto center_direction = eye - at;
-    auto distance = XMVector3Length(center_direction);
     at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = XMVectorSet(0.0f, 0.0f, -1.0f, 0.f);
-    eye = at + distance * XMVectorSet(0.0f, 1.f, 0.f, 0.f);
+    eye = at + XMVectorSet(0.0f, 1.f, 0.f, 0.f);
 }
 
-void gui_wrapper::present_using_imgui()
+void gui_wrapper::present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc)
 {
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
@@ -687,6 +695,10 @@ void gui_wrapper::present_using_imgui()
     }
     if (ImGui::Button("top view")) {
         viewport_config.top_view();
+    }
+    if(ImGui::Button("optimal zoom"))
+    {
+        viewport_config.optimal_size( height, m_bbDesc );
     }
     ImGui::End();
     ImGui::Render();
