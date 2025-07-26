@@ -6,29 +6,24 @@ module;
 #include "imgui_impl_dx11.h"
 #include "imgui_hack.h"
 
-#include <directxmath.h>
 #include <windowsx.h>
-
-#include <fstream>
-#include <vector>
-#include <optional>
-#include <array>
 #include <Windows.h>
 #include <wrl\client.h>
 #include <d3d11.h>
 #include <directxmath.h>
+
+#include <fstream>
+#include <optional>
+#include <array>
 #include <vector>
 
 export module gui_wrapper;
-
-export UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
 
 struct vertex_shader_holder
 {
     Microsoft::WRL::ComPtr <ID3D11VertexShader> m_pVertexShader;
     Microsoft::WRL::ComPtr <ID3D11InputLayout> m_pInputLayout;
 };
-
 
 struct frame_resources
 {
@@ -49,7 +44,7 @@ export struct vertex_representation
     std::vector<unsigned short> indices;
 };
 
-void test_hresult(HRESULT hr, const char* message)
+void test_hresult(const HRESULT hr, const char* message)
 {
     if (hr != S_OK)
     {
@@ -63,8 +58,53 @@ struct D3DDeviceHolder
     Microsoft::WRL::ComPtr <ID3D11DeviceContext> g_pd3dDeviceContext;
     Microsoft::WRL::ComPtr < IDXGISwapChain> g_pSwapChain;
 
-    vertex_shader_holder load_vertex_shader() const;
-    Microsoft::WRL::ComPtr <ID3D11PixelShader> load_pixel_shader() const;
+    vertex_shader_holder load_vertex_shader() const
+    {
+        vertex_shader_holder vs;
+        std::ifstream vShader{ "VertexShader.cso", std::ios::binary };
+        std::vector<char> fileContents((std::istreambuf_iterator<char>(vShader)), std::istreambuf_iterator<char>());
+        HRESULT hr = g_pd3dDevice->CreateVertexShader(
+            fileContents.data(), fileContents.size(),
+            nullptr, vs.m_pVertexShader.GetAddressOf()
+        );
+        test_hresult(hr, "could not create vertex shader");
+
+        std::vector<D3D11_INPUT_ELEMENT_DESC> iaDesc
+        {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,
+            0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+
+            { "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT,
+            0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        };
+
+        hr = g_pd3dDevice->CreateInputLayout(
+            iaDesc.data(), (UINT)iaDesc.size(),
+            fileContents.data(), fileContents.size(),
+            vs.m_pInputLayout.GetAddressOf()
+        );
+        test_hresult(hr, "could not create vertex shader");
+
+        return vs;
+    }
+
+    Microsoft::WRL::ComPtr <ID3D11PixelShader> load_pixel_shader() const
+    {
+        Microsoft::WRL::ComPtr <ID3D11PixelShader> m_pPixelShader;
+        std::ifstream pShader{ "PixelShader.cso",  std::ios::binary };
+        std::vector<char> fileContents((std::istreambuf_iterator<char>(pShader)),
+            std::istreambuf_iterator<char>());
+
+        HRESULT hr = g_pd3dDevice->CreatePixelShader(
+            fileContents.data(),
+            fileContents.size(),
+            nullptr,
+            m_pPixelShader.GetAddressOf()
+        );
+        test_hresult(hr, "could not create pixel shader");
+        return m_pPixelShader;
+    }
+
     Microsoft::WRL::ComPtr <ID3D11Buffer> create_constant_buffer();
     bool is_ocluded() const;
     Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices) const;
@@ -144,7 +184,7 @@ export struct gui_wrapper
 {
     std::array<char, 500> prescription{ '1', ',', '4', ',', '1', ',', '4'};
 
-    void present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc);
+    void present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, DirectX::XMFLOAT3 center);
 };
 
 export struct global_resources
@@ -154,7 +194,7 @@ export struct global_resources
     Microsoft::WRL::ComPtr <ID3D11Buffer> constant_buffer;
 };
 
-extern UINT                     g_ResizeWidth, g_ResizeHeight;
+UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -308,6 +348,10 @@ struct ViewportConfigurationManager
         eye = at + zoom_factor
             * normalized_direction;
     }
+    void set_at(DirectX::XMFLOAT3 pos)
+    {
+        at = DirectX::XMVectorSet( pos.x, pos.y, pos.z, 0.f);
+    }
 };
 
 ViewportConfigurationManager viewport_config;
@@ -384,14 +428,18 @@ export struct application_basics
         IMGUI_CHECKVERSION();
         setup_imgui();
     }
-    void update_after_resize()
+    void update_window_size()
     {
-        target_view = std::optional<render_target_view_holder>{};
-        d3dDevice.g_pd3dDeviceContext->ClearState();
-        d3dDevice.g_pd3dDeviceContext->Flush();
-        HRESULT hr = d3dDevice.g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
-        test_hresult(hr, "could not resize buffers");
-        target_view = init_render_target_view(d3dDevice);
+        if (g_ResizeWidth != 0 && g_ResizeHeight != 0)
+        {
+            target_view = std::optional<render_target_view_holder>{};
+            d3dDevice.g_pd3dDeviceContext->ClearState();
+            d3dDevice.g_pd3dDeviceContext->Flush();
+            HRESULT hr = d3dDevice.g_pSwapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
+            test_hresult(hr, "could not resize buffers");
+            target_view = init_render_target_view(d3dDevice);
+            g_ResizeWidth = g_ResizeHeight = 0;
+        }
     }
     void clear_render_target_view()
     {
@@ -678,7 +726,7 @@ void ViewportConfigurationManager::top_view()
     eye = at + XMVectorSet(0.0f, 1.f, 0.f, 0.f);
 }
 
-void gui_wrapper::present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc)
+void gui_wrapper::present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, DirectX::XMFLOAT3 center)
 {
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
@@ -700,6 +748,10 @@ void gui_wrapper::present_using_imgui( float height, const D3D11_TEXTURE2D_DESC&
     {
         viewport_config.optimal_size( height, m_bbDesc );
     }
+    if (ImGui::Button("center the object"))
+    {
+        viewport_config.set_at(center);
+    }
     ImGui::End();
     ImGui::Render();
 }
@@ -716,53 +768,6 @@ WindowClassWrapper::WindowClassWrapper()
 WindowClassWrapper::~WindowClassWrapper()
 {
     ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
-}
-
-vertex_shader_holder D3DDeviceHolder::load_vertex_shader() const
-{
-    vertex_shader_holder vs;
-    std::ifstream vShader{ "VertexShader.cso", std::ios::binary };
-    std::vector<char> fileContents((std::istreambuf_iterator<char>(vShader)), std::istreambuf_iterator<char>());
-    HRESULT hr = g_pd3dDevice->CreateVertexShader(
-        fileContents.data(), fileContents.size(),
-        nullptr, vs.m_pVertexShader.GetAddressOf()
-    );
-    test_hresult(hr, "could not create vertex shader");
-
-    std::vector<D3D11_INPUT_ELEMENT_DESC> iaDesc
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,
-        0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT,
-        0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
-
-    hr = g_pd3dDevice->CreateInputLayout(
-        iaDesc.data(), (UINT)iaDesc.size(),
-        fileContents.data(), fileContents.size(),
-        vs.m_pInputLayout.GetAddressOf()
-    );
-    test_hresult(hr, "could not create vertex shader");
-
-    return vs;
-}
-
-Microsoft::WRL::ComPtr <ID3D11PixelShader> D3DDeviceHolder::load_pixel_shader() const
-{
-    Microsoft::WRL::ComPtr <ID3D11PixelShader> m_pPixelShader;
-    std::ifstream pShader{ "PixelShader.cso",  std::ios::binary };
-    std::vector<char> fileContents((std::istreambuf_iterator<char>(pShader)),
-        std::istreambuf_iterator<char>());
-
-    HRESULT hr = g_pd3dDevice->CreatePixelShader(
-        fileContents.data(),
-        fileContents.size(),
-        nullptr,
-        m_pPixelShader.GetAddressOf()
-    );
-    test_hresult(hr, "could not create pixel shader");
-    return m_pPixelShader;
 }
 
 Microsoft::WRL::ComPtr <ID3D11Buffer> D3DDeviceHolder::create_constant_buffer()

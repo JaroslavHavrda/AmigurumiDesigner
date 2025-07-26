@@ -2,21 +2,19 @@ import gui_wrapper;
 
 #define NOMINMAX
 #include <Windows.h>
+#include <directxmath.h>
+
 #include <cmath>
-#include <optional>
 #include <vector>
 #include <string_view>
 #include <charconv>
 #include <numbers>
 #include <ranges>
-#include <limits>
 #include <iostream>
-#include <directxmath.h>
-#include <numeric>
 
 // Data
 
-void test_vertex_vector_size(std::vector<VertexPositionColor> & vertices)
+static void test_vertex_vector_size(const std::vector<VertexPositionColor> & vertices)
 {
     if (vertices.size() > std::numeric_limits<unsigned short>::max())
     {
@@ -24,13 +22,14 @@ void test_vertex_vector_size(std::vector<VertexPositionColor> & vertices)
     }
 }
 
-static void draw_bottom_lid(vertex_representation & vr, float diameter, int slice_count)
+static void draw_bottom_lid(vertex_representation & vr, const float diameter, const int slice_count)
 {
+    test_vertex_vector_size(vr.vertices);
     vr.vertices.emplace_back(DirectX::XMFLOAT3{ 0.f, 0.f, 0.f }, DirectX::XMFLOAT3{ 1.f,   1.f,   1.f });
-    unsigned short start_index = (unsigned short)vr.vertices.size();
+    const unsigned short start_index = (unsigned short)vr.vertices.size();
     for (unsigned short i = 0; i < slice_count; ++i)
     {
-        float angle = (float)(i * std::numbers::pi * 2 / slice_count);
+        const float angle = (float)(i * std::numbers::pi * 2 / slice_count);
         vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, 0.f, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 });
     }
     for (unsigned short i = 0; i < slice_count; ++i)
@@ -42,14 +41,14 @@ static void draw_bottom_lid(vertex_representation & vr, float diameter, int slic
     test_vertex_vector_size(vr.vertices);
 }
 
-static void draw_top_lid(vertex_representation& vr, float diameter, int slice_count, float level)
+static void draw_top_lid(vertex_representation& vr, const float diameter, const int slice_count, const float level)
 {
     test_vertex_vector_size(vr.vertices);
     vr.vertices.emplace_back(DirectX::XMFLOAT3{ 0.f, level, 0.f }, DirectX::XMFLOAT3{ 1.f,   1.f,   1.f });
-    unsigned short start_index = (unsigned short)vr.vertices.size();
+    const unsigned short start_index = (unsigned short)vr.vertices.size();
     for (unsigned short i = 0; i < slice_count; ++i)
     {
-        float angle = (float)(i * std::numbers::pi * 2 / slice_count);
+        const float angle = (float)(i * std::numbers::pi * 2 / slice_count);
         vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, level, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 });
     }
     for (unsigned short i = 0; i < slice_count; ++i)
@@ -61,7 +60,7 @@ static void draw_top_lid(vertex_representation& vr, float diameter, int slice_co
     test_vertex_vector_size(vr.vertices);
 }
 
-static void draw_side(vertex_representation & vr , float diameter, float previous_diameter, int slice_count, float level, float height)
+static void draw_side(vertex_representation & vr , const float diameter, const float previous_diameter, const int slice_count, const float level, const float height)
 {
     test_vertex_vector_size(vr.vertices);
     unsigned short start_index = (unsigned short)vr.vertices.size();
@@ -187,11 +186,9 @@ int main(int, char**)
             ::Sleep(10);
             continue;
         }
-        if (g_ResizeWidth != 0 && g_ResizeHeight != 0)
-        {
-            app.update_after_resize();
-            g_ResizeWidth = g_ResizeHeight = 0;
-        }
+        
+        app.update_window_size();
+            
         float height = 5;
         float previous_radius = 0.;
         bool first_slice = true;
@@ -208,9 +205,21 @@ int main(int, char**)
                 first_slice = false;
             }
         }
-        gui.present_using_imgui(height, app.target_view->m_bbDesc);
+        vertex_representation vertices = calc_vertices(prescription.parsed_numbers);
+
+        DirectX::XMFLOAT3 center{0,0,0};
+        int n = 0;
+        for( const auto & vertex: vertices.vertices)
+        {
+            n = n + 1;
+            center.x = center.x + (vertex.pos.x - center.x) / n;
+            center.y = center.y + (vertex.pos.y - center.y) / n;
+            center.z = center.z + (vertex.pos.z - center.z) / n;
+        }
+
+        gui.present_using_imgui(height, app.target_view->m_bbDesc, center);
         prescription.update_prescription({ gui.prescription.data(), std::strlen( gui.prescription.data()) });
-        vertex_representation vertices = calc_vertices( prescription.parsed_numbers);
+        
         app.draw_vertices(vertices, application_resources);
     }
     return 0;
