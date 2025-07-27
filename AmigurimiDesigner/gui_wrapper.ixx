@@ -333,7 +333,29 @@ struct ViewportConfigurationManager
     bool right_dragging = false;
 
     DirectX::XMVECTOR calc_eye() const;
+    DirectX::XMVECTOR rotaded_eye(float x_diff, float y_diff) const
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        auto normalized_direction = XMVector3Normalize(center_direction);
+        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
+        auto real_up = XMVector3Cross(normalized_direction, left);
+        auto final_direction = normalized_direction + y_diff / 500 * real_up - x_diff / 500 * left;
+        auto normalized_resulting_direction = XMVector3Normalize(final_direction);
+
+        return calc_at() + zoom_factor * normalized_resulting_direction;
+    }
     DirectX::XMVECTOR calc_up() const;
+    DirectX::XMVECTOR updated_up() const
+    {
+        using namespace DirectX;
+        auto original_direction = eye - at;
+        auto left = -XMVector3Cross(original_direction, up);
+        auto new_eye = calc_eye();
+        auto new_diraction = new_eye - at;
+        auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
+        return new_up;
+    }
     DirectX::XMVECTOR calc_at() const;
     void stop_dragging();
     void reset_defaults();
@@ -638,23 +660,45 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         viewport_config.zoom_factor *= (float)scaling;
         return 0;
     }
+    case WM_KEYDOWN:
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.WantCaptureKeyboard)
+        {
+            return 0;
+        }
+        if (wParam == VK_LEFT)
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(-30, 0);
+            viewport_config.up = viewport_config.updated_up();
+        }
+        if (wParam == VK_RIGHT)
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(30, 0);
+            viewport_config.up = viewport_config.updated_up();
+        }
+        if (wParam == VK_UP)
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(0, -30);
+            viewport_config.up = viewport_config.updated_up();
+        }
+        if (wParam == VK_DOWN)
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(0, 30);
+            viewport_config.up = viewport_config.updated_up();
+        }
+        return 0;
+    }
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
 DirectX::XMVECTOR ViewportConfigurationManager::calc_eye() const
 {
-    using namespace DirectX;
-    auto center_direction = eye - at;
-    auto normalized_direction = XMVector3Normalize(center_direction);
     float y_diff = dragging ? ((float)current_pos.y - drag_start.y) : 0;
     float x_diff = dragging ? ((float)current_pos.x - drag_start.x) : 0;
-    auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
-    auto real_up = XMVector3Cross(normalized_direction, left);
-    auto final_direction = normalized_direction + y_diff / 500 * real_up - x_diff / 500 * left;
-    auto normalized_resulting_direction = XMVector3Normalize(final_direction);
 
-    return calc_at() + zoom_factor * normalized_resulting_direction;
+    return rotaded_eye(x_diff, y_diff);
 }
 
 DirectX::XMVECTOR ViewportConfigurationManager::calc_at() const
@@ -680,12 +724,8 @@ DirectX::XMVECTOR ViewportConfigurationManager::calc_up() const
     {
         return up;
     }
-    auto original_direction = eye - at;
-    auto left = -XMVector3Cross(original_direction, up);
-    auto new_eye = calc_eye();
-    auto new_diraction = new_eye - at;
-    auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
-    return new_up;
+    
+    return updated_up();
 }
 
 void ViewportConfigurationManager::stop_dragging()
