@@ -52,6 +52,12 @@ void test_hresult(const HRESULT hr, const char* message)
     }
 }
 
+struct ConstantBufferStruct {
+    DirectX::XMFLOAT4X4 world;
+    DirectX::XMFLOAT4X4 view;
+    DirectX::XMFLOAT4X4 projection;
+};
+
 struct D3DDeviceHolder
 {
     Microsoft::WRL::ComPtr<ID3D11Device> g_pd3dDevice;
@@ -105,11 +111,79 @@ struct D3DDeviceHolder
         return m_pPixelShader;
     }
 
-    Microsoft::WRL::ComPtr <ID3D11Buffer> create_constant_buffer();
-    bool is_ocluded() const;
-    Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices) const;
-    Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(std::vector<unsigned short> CubeIndices) const;
-    frame_resources prepare_frame_resources(const vertex_representation& vertices);
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_constant_buffer()
+    {
+        Microsoft::WRL::ComPtr <ID3D11Buffer> m_pConstantBuffer;
+        CD3D11_BUFFER_DESC cbDesc{
+        sizeof(ConstantBufferStruct),
+        D3D11_BIND_CONSTANT_BUFFER
+        };
+
+        HRESULT hr = g_pd3dDevice->CreateBuffer(
+            &cbDesc,
+            nullptr,
+            m_pConstantBuffer.GetAddressOf()
+        );
+
+        if (hr != S_OK || !m_pConstantBuffer)
+        {
+            throw std::runtime_error("could not create constant buffer");
+        }
+        return m_pConstantBuffer;
+    }
+
+    bool is_ocluded() const
+    {
+        return g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED;
+    }
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices) const
+    {
+        Microsoft::WRL::ComPtr <ID3D11Buffer> m_pVertexBuffer;
+        CD3D11_BUFFER_DESC vDesc{
+        (UINT)(CubeVertices.size() * sizeof(VertexPositionColor)),
+        D3D11_BIND_VERTEX_BUFFER
+        };
+
+        D3D11_SUBRESOURCE_DATA vData{ CubeVertices.data(), 0, 0 };
+
+        HRESULT hr = g_pd3dDevice->CreateBuffer(
+            &vDesc,
+            &vData,
+            m_pVertexBuffer.GetAddressOf()
+        );
+        if (hr != S_OK)
+        {
+            throw std::runtime_error("could not creare vertex buffer");
+        }
+        return m_pVertexBuffer;
+    }
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(std::vector<unsigned short> CubeIndices) const
+    {
+        Microsoft::WRL::ComPtr < ID3D11Buffer> m_pIndexBuffer;
+        CD3D11_BUFFER_DESC iDesc{
+            (UINT)(CubeIndices.size() * sizeof(unsigned short)),
+            D3D11_BIND_INDEX_BUFFER
+        };
+
+        D3D11_SUBRESOURCE_DATA iData{ CubeIndices.data(), 0, 0 };
+
+        HRESULT hr = g_pd3dDevice->CreateBuffer(
+            &iDesc,
+            &iData,
+            m_pIndexBuffer.GetAddressOf()
+        );
+        test_hresult(hr, "could not create index buffer");
+        return m_pIndexBuffer;
+    }
+
+    frame_resources prepare_frame_resources(const vertex_representation& vertices)
+    {
+        return {
+                .vertex_buffer = create_vertex_buffer(vertices.vertices),
+                .index_buffer = create_index_buffer(vertices.indices),
+                .m_indexCount = (UINT)vertices.indices.size(),
+        };
+    }
     Microsoft::WRL::ComPtr <ID3D11DepthStencilView> create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil) const
     {
         Microsoft::WRL::ComPtr <ID3D11DepthStencilView>  m_pDepthStencilView;
@@ -175,16 +249,148 @@ struct D3DDeviceHolder
             0
         );
     }
-    void draw_scene(int m_indexCount) const;
+    void draw_scene(int m_indexCount) const
+    {
+        // Calling Draw tells Direct3D to start sending commands to the graphics device.
+        g_pd3dDeviceContext->DrawIndexed(
+            m_indexCount,
+            0,
+            0
+        );
+
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+        // Present
+        HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
+        test_hresult(hr, "could not draw");
+    }
 };
 
 D3DDeviceHolder init_d3d_device(HWND hWnd);
+
+struct MousePosition
+{
+    int x = 0;
+    int y = 0;
+};
+
+struct ViewportConfigurationManager
+{
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
+    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+
+    float zoom_factor = 10;
+
+    MousePosition current_pos;
+    MousePosition drag_start;
+    bool dragging = false;
+    bool right_dragging = false;
+
+    DirectX::XMVECTOR calc_eye() const;
+    DirectX::XMVECTOR rotaded_eye(float x_diff, float y_diff) const
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        auto normalized_direction = XMVector3Normalize(center_direction);
+        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
+        auto real_up = XMVector3Cross(normalized_direction, left);
+        auto final_direction = normalized_direction + y_diff / 500 * real_up - x_diff / 500 * left;
+        auto normalized_resulting_direction = XMVector3Normalize(final_direction);
+
+        return calc_at() + zoom_factor * normalized_resulting_direction;
+    }
+    DirectX::XMVECTOR calc_up() const
+    {
+        using namespace DirectX;
+        if (!dragging)
+        {
+            return up;
+        }
+
+        return updated_up();
+    }
+    DirectX::XMVECTOR updated_up() const
+    {
+        using namespace DirectX;
+        auto original_direction = eye - at;
+        auto left = -XMVector3Cross(original_direction, up);
+        auto new_eye = calc_eye();
+        auto new_diraction = new_eye - at;
+        auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
+        return new_up;
+    }
+    DirectX::XMVECTOR calc_at() const;
+    void stop_dragging();
+    void reset_defaults();
+    void front_view()
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+        eye = at + XMVectorSet(0.0f, 0.f, 1.f, 0.f);
+    }
+    void top_view()
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        up = XMVectorSet(0.0f, 0.0f, -1.0f, 0.f);
+        eye = at + XMVectorSet(0.0f, 1.f, 0.f, 0.f);
+    }
+
+    void optimal_size(float height, const D3D11_TEXTURE2D_DESC& m_bbDesc)
+    {
+        using namespace DirectX;
+        auto center_direction = eye - at;
+        auto normalized_direction = XMVector3Normalize(center_direction);
+        zoom_factor = height * 2000 / m_bbDesc.Height;
+        eye = at + zoom_factor
+            * normalized_direction;
+    }
+    void set_at(DirectX::XMFLOAT3 pos)
+    {
+        at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
+    }
+};
+
+ViewportConfigurationManager viewport_config;
 
 export struct gui_wrapper
 {
     std::array<char, 500> prescription{ '1', ',', '4', ',', '1', ',', '4'};
 
-    void present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, DirectX::XMFLOAT3 center);
+    void present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, DirectX::XMFLOAT3 center, const std::string_view error)
+    {
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+        ImGui::Begin("Amigurumi designer");
+        ImGui::InputTextMultiline("Prescription", prescription.data(), prescription.size());
+        ImGui::LabelText("", error.data());
+        ImGui::End();
+        ImGui::Begin("Rotation");
+        if (ImGui::Button("default view")) {
+            viewport_config.reset_defaults();
+        }
+        if (ImGui::Button("front view")) {
+            viewport_config.front_view();
+        }
+        if (ImGui::Button("top view")) {
+            viewport_config.top_view();
+        }
+        if (ImGui::Button("optimal zoom"))
+        {
+            viewport_config.optimal_size(height, m_bbDesc);
+        }
+        if (ImGui::Button("center the object"))
+        {
+            viewport_config.set_at(center);
+        }
+        ImGui::End();
+        ImGui::Render();
+    }
 };
 
 export struct global_resources
@@ -202,8 +408,18 @@ struct WindowClassWrapper
 {
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"Amigurumi Designer", nullptr };
 
-    WindowClassWrapper();
-    ~WindowClassWrapper();
+    WindowClassWrapper()
+    {
+        auto res = ::RegisterClassExW(&wc);
+        if (res == 0)
+        {
+            throw std::runtime_error("could not register window class");
+        }
+    }
+    ~WindowClassWrapper()
+    {
+        ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+    }
 
 };
 
@@ -306,77 +522,6 @@ struct imgui_holder
 };
 
 render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice);
-
-struct ConstantBufferStruct {
-    DirectX::XMFLOAT4X4 world;
-    DirectX::XMFLOAT4X4 view;
-    DirectX::XMFLOAT4X4 projection;
-};
-
-struct MousePosition
-{
-    int x = 0;
-    int y = 0;
-};
-
-struct ViewportConfigurationManager
-{
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
-    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
-    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-
-    float zoom_factor = 10;
-
-    MousePosition current_pos;
-    MousePosition drag_start;
-    bool dragging = false;
-    bool right_dragging = false;
-
-    DirectX::XMVECTOR calc_eye() const;
-    DirectX::XMVECTOR rotaded_eye(float x_diff, float y_diff) const
-    {
-        using namespace DirectX;
-        auto center_direction = eye - at;
-        auto normalized_direction = XMVector3Normalize(center_direction);
-        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
-        auto real_up = XMVector3Cross(normalized_direction, left);
-        auto final_direction = normalized_direction + y_diff / 500 * real_up - x_diff / 500 * left;
-        auto normalized_resulting_direction = XMVector3Normalize(final_direction);
-
-        return calc_at() + zoom_factor * normalized_resulting_direction;
-    }
-    DirectX::XMVECTOR calc_up() const;
-    DirectX::XMVECTOR updated_up() const
-    {
-        using namespace DirectX;
-        auto original_direction = eye - at;
-        auto left = -XMVector3Cross(original_direction, up);
-        auto new_eye = calc_eye();
-        auto new_diraction = new_eye - at;
-        auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
-        return new_up;
-    }
-    DirectX::XMVECTOR calc_at() const;
-    void stop_dragging();
-    void reset_defaults();
-    void front_view();
-    void top_view();
-    void optimal_size( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc)
-    {
-        using namespace DirectX;
-        auto center_direction = eye - at;
-        auto normalized_direction = XMVector3Normalize(center_direction);
-        zoom_factor = height * 2000 / m_bbDesc.Height;
-        eye = at + zoom_factor
-            * normalized_direction;
-    }
-    void set_at(DirectX::XMFLOAT3 pos)
-    {
-        at = DirectX::XMVectorSet( pos.x, pos.y, pos.z, 0.f);
-    }
-};
-
-ViewportConfigurationManager viewport_config;
 
 ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
 {
@@ -717,17 +862,6 @@ DirectX::XMVECTOR ViewportConfigurationManager::calc_at() const
     return at + y_diff /60 * real_up - x_diff /60 * left;
 }
 
-DirectX::XMVECTOR ViewportConfigurationManager::calc_up() const
-{
-    using namespace DirectX;
-    if (!dragging)
-    {
-        return up;
-    }
-    
-    return updated_up();
-}
-
 void ViewportConfigurationManager::stop_dragging()
 {
     auto new_eye = calc_eye();
@@ -746,158 +880,4 @@ void ViewportConfigurationManager::reset_defaults()
     at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
     zoom_factor = 10;
-}
-
-void ViewportConfigurationManager::front_view()
-{
-    using namespace DirectX;
-    auto center_direction = eye - at;
-    at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
-    up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-    eye = at + XMVectorSet(0.0f, 0.f, 1.f, 0.f);
-}
-
-void ViewportConfigurationManager::top_view()
-{
-    using namespace DirectX;
-    auto center_direction = eye - at;
-    at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
-    up = XMVectorSet(0.0f, 0.0f, -1.0f, 0.f);
-    eye = at + XMVectorSet(0.0f, 1.f, 0.f, 0.f);
-}
-
-void gui_wrapper::present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, DirectX::XMFLOAT3 center)
-{
-    ImGui_ImplDX11_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-    ImGui::Begin("Amigurumi designer");
-    ImGui::InputTextMultiline("Prescription", prescription.data(), prescription.size());
-    ImGui::End();
-    ImGui::Begin("Rotation");
-    if (ImGui::Button("default view")) {
-        viewport_config.reset_defaults();
-    }
-    if (ImGui::Button("front view")) {
-        viewport_config.front_view();
-    }
-    if (ImGui::Button("top view")) {
-        viewport_config.top_view();
-    }
-    if(ImGui::Button("optimal zoom"))
-    {
-        viewport_config.optimal_size( height, m_bbDesc );
-    }
-    if (ImGui::Button("center the object"))
-    {
-        viewport_config.set_at(center);
-    }
-    ImGui::End();
-    ImGui::Render();
-}
-
-WindowClassWrapper::WindowClassWrapper()
-{
-    auto res = ::RegisterClassExW(&wc);
-    if (res == 0)
-    {
-        throw std::runtime_error("could not register window class");
-    }
-}
-
-WindowClassWrapper::~WindowClassWrapper()
-{
-    ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
-}
-
-Microsoft::WRL::ComPtr <ID3D11Buffer> D3DDeviceHolder::create_constant_buffer()
-{
-    Microsoft::WRL::ComPtr <ID3D11Buffer> m_pConstantBuffer;
-    CD3D11_BUFFER_DESC cbDesc{
-    sizeof(ConstantBufferStruct),
-    D3D11_BIND_CONSTANT_BUFFER
-    };
-
-    HRESULT hr = g_pd3dDevice->CreateBuffer(
-        &cbDesc,
-        nullptr,
-        m_pConstantBuffer.GetAddressOf()
-    );
-
-    if (hr != S_OK || !m_pConstantBuffer)
-    {
-        throw std::runtime_error("could not create constant buffer");
-    }
-    return m_pConstantBuffer;
-}
-
-bool D3DDeviceHolder::is_ocluded() const
-{
-    return g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED;
-}
-
-Microsoft::WRL::ComPtr <ID3D11Buffer> D3DDeviceHolder::create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices) const
-{
-    Microsoft::WRL::ComPtr <ID3D11Buffer> m_pVertexBuffer;
-    CD3D11_BUFFER_DESC vDesc{
-    (UINT)(CubeVertices.size() * sizeof(VertexPositionColor)),
-    D3D11_BIND_VERTEX_BUFFER
-    };
-
-    D3D11_SUBRESOURCE_DATA vData{ CubeVertices.data(), 0, 0 };
-
-    HRESULT hr = g_pd3dDevice->CreateBuffer(
-        &vDesc,
-        &vData,
-        m_pVertexBuffer.GetAddressOf()
-    );
-    if (hr != S_OK)
-    {
-        throw std::runtime_error("could not creare vertex buffer");
-    }
-    return m_pVertexBuffer;
-}
-
-Microsoft::WRL::ComPtr <ID3D11Buffer> D3DDeviceHolder::create_index_buffer(std::vector<unsigned short> CubeIndices) const
-{
-    Microsoft::WRL::ComPtr < ID3D11Buffer> m_pIndexBuffer;
-    CD3D11_BUFFER_DESC iDesc{
-        (UINT)(CubeIndices.size() * sizeof(unsigned short)),
-        D3D11_BIND_INDEX_BUFFER
-    };
-
-    D3D11_SUBRESOURCE_DATA iData{ CubeIndices.data(), 0, 0 };
-
-    HRESULT hr = g_pd3dDevice->CreateBuffer(
-        &iDesc,
-        &iData,
-        m_pIndexBuffer.GetAddressOf()
-    );
-    test_hresult(hr, "could not create index buffer");
-    return m_pIndexBuffer;
-}
-
-frame_resources D3DDeviceHolder::prepare_frame_resources(const vertex_representation& vertices)
-{
-    return {
-            .vertex_buffer = create_vertex_buffer(vertices.vertices),
-            .index_buffer = create_index_buffer(vertices.indices),
-            .m_indexCount = (UINT)vertices.indices.size(),
-    };
-}
-
-void D3DDeviceHolder::draw_scene(int m_indexCount) const
-{
-    // Calling Draw tells Direct3D to start sending commands to the graphics device.
-    g_pd3dDeviceContext->DrawIndexed(
-        m_indexCount,
-        0,
-        0
-    );
-
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-    // Present
-    HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
-    test_hresult(hr, "could not draw");
 }

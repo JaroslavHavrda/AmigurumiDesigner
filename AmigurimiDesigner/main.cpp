@@ -3,6 +3,7 @@ import gui_wrapper;
 #define NOMINMAX
 #include <Windows.h>
 #include <directxmath.h>
+#include <d3d11.h>
 
 #include <cmath>
 #include <vector>
@@ -10,7 +11,9 @@ import gui_wrapper;
 #include <charconv>
 #include <numbers>
 #include <ranges>
-#include <iostream>
+#include <limits>
+#include <string>
+#include <stdexcept>
 
 // Data
 
@@ -84,24 +87,21 @@ static void draw_side(vertex_representation & vr , const float diameter, const f
     test_vertex_vector_size(vr.vertices);
 }
 
-float layer_height(float previous_radius, float radius)
+static float layer_height(const float previous_radius, const float radius)
 {
-    float distance_difference = (previous_radius - radius);
-    float length = 4.;
-    float height = std::sqrt(length * length - distance_difference * distance_difference);
+    const float distance_difference = (previous_radius - radius);
+    const float length = 4.;
+    const float height = std::sqrt(length * length - distance_difference * distance_difference);
     return height;
 }
 
 static vertex_representation calc_vertices(const std::vector<float> & radiuses)
 {
-    std::vector<VertexPositionColor> vertices{};
-    std::vector<unsigned short> indices{};
-    vertex_representation vert_res{vertices, indices};
+    vertex_representation vert_res;
     float level = 0.;
     float previous_radius = 0.;
     bool first_slice = true;
     constexpr int slice_count = 33;
-    vert_res.vertices = vertices;
     for (const auto &radius: radiuses)
     {
         if (first_slice)
@@ -112,8 +112,6 @@ static vertex_representation calc_vertices(const std::vector<float> & radiuses)
         if (!first_slice)
         {
             float height = layer_height(previous_radius, radius);
-            
-
             draw_side(vert_res, radius, previous_radius, slice_count, level, height);
             level += height;
         }
@@ -122,7 +120,6 @@ static vertex_representation calc_vertices(const std::vector<float> & radiuses)
         first_slice = false;
     }
     draw_top_lid(vert_res, previous_radius, slice_count, level);
-    std::cout << std::endl;
     return vert_res;
 }
 
@@ -143,9 +140,11 @@ static bool process_messages()
 struct prescription_parser
 {
     std::vector<float> parsed_numbers{1};
+    std::string error;
     void update_prescription(const std::string_view& prescription)
     {
         using std::operator""sv;
+        using std::operator""s;
         std::vector<float> prescriptions_num;
         constexpr auto delim{ ","sv };
         for (const auto& item : std::views::split(prescription, ","sv))
@@ -154,6 +153,7 @@ struct prescription_parser
             auto [ptr, err] = std::from_chars(item.data(), item.data() + item.size(), parsed_number);
             if (err != std::errc())
             {
+                error = "syntax_error"s + std::string(item.data(), item.data() + item.size());
                 return;
             }
             prescriptions_num.push_back((float)parsed_number);
@@ -161,11 +161,40 @@ struct prescription_parser
         }
         if (prescriptions_num.empty())
         {
+            error = "the prescription is empty";
             return;
         }
         parsed_numbers = prescriptions_num;
+        error = "";
     }
 };
+
+static DirectX::XMFLOAT3 calc_center(const std::vector<VertexPositionColor> & vertices)
+{
+    DirectX::XMFLOAT3 center{ 0,0,0 };
+    int n = 0;
+    for (const auto& vertex : vertices)
+    {
+        n = n + 1;
+        center.x = center.x + (vertex.pos.x - center.x) / n;
+        center.y = center.y + (vertex.pos.y - center.y) / n;
+        center.z = center.z + (vertex.pos.z - center.z) / n;
+    }
+
+    return center;
+}
+
+static float calc_height_needed(const std::vector<VertexPositionColor>& vertices)
+{
+    float max_z = 0.f;
+    float max_y = 0.f;
+    for (const auto& vertex : vertices)
+    {
+        max_y = std::max(max_z, vertex.pos.y);
+        max_z = std::max(max_z, vertex.pos.z);
+    }
+    return max_z + max_y;
+}
 
 int main(int, char**)
 {
@@ -189,37 +218,11 @@ int main(int, char**)
         
         app.update_window_size();
             
-        float height = 5;
-        float previous_radius = 0.;
-        bool first_slice = true;
-        if (prescription.parsed_numbers.size() > 1)
-        {
-            for (const auto& radius : prescription.parsed_numbers)
-            {
-                if (!first_slice)
-                {
-                    height += layer_height(previous_radius, radius);
-                }
-
-                previous_radius = radius;
-                first_slice = false;
-            }
-        }
-        vertex_representation vertices = calc_vertices(prescription.parsed_numbers);
-
-        DirectX::XMFLOAT3 center{0,0,0};
-        int n = 0;
-        for( const auto & vertex: vertices.vertices)
-        {
-            n = n + 1;
-            center.x = center.x + (vertex.pos.x - center.x) / n;
-            center.y = center.y + (vertex.pos.y - center.y) / n;
-            center.z = center.z + (vertex.pos.z - center.z) / n;
-        }
-
-        gui.present_using_imgui(height, app.target_view->m_bbDesc, center);
+        const vertex_representation vertices = calc_vertices(prescription.parsed_numbers);
+        const DirectX::XMFLOAT3 center = calc_center(vertices.vertices);
+        const float height = calc_height_needed(vertices.vertices);
+        gui.present_using_imgui(height, app.target_view->m_bbDesc, center, prescription.error );
         prescription.update_prescription({ gui.prescription.data(), std::strlen( gui.prescription.data()) });
-        
         app.draw_vertices(vertices, application_resources);
     }
     return 0;
