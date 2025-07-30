@@ -16,6 +16,7 @@ module;
 #include <optional>
 #include <array>
 #include <vector>
+#include <iostream>
 
 export module gui_wrapper;
 
@@ -52,7 +53,7 @@ void test_hresult(const HRESULT hr, const char* message)
     }
 }
 
-struct ConstantBufferStruct {
+struct constant_buffer_struct {
     DirectX::XMFLOAT4X4 world;
     DirectX::XMFLOAT4X4 view;
     DirectX::XMFLOAT4X4 projection;
@@ -67,15 +68,15 @@ struct D3DDeviceHolder
     vertex_shader_holder load_vertex_shader() const
     {
         vertex_shader_holder vs;
-        std::ifstream vShader{ "VertexShader.cso", std::ios::binary };
-        std::vector<char> fileContents((std::istreambuf_iterator<char>(vShader)), std::istreambuf_iterator<char>());
+        std::ifstream shader_file{ "VertexShader.cso", std::ios::binary };
+        const std::vector<char> file_contents((std::istreambuf_iterator<char>(shader_file)), std::istreambuf_iterator<char>());
         HRESULT hr = g_pd3dDevice->CreateVertexShader(
-            fileContents.data(), fileContents.size(),
+            file_contents.data(), file_contents.size(),
             nullptr, vs.m_pVertexShader.GetAddressOf()
         );
         test_hresult(hr, "could not create vertex shader");
 
-        std::vector<D3D11_INPUT_ELEMENT_DESC> iaDesc
+        const std::vector<D3D11_INPUT_ELEMENT_DESC> input_description
         {
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,
             0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -85,8 +86,8 @@ struct D3DDeviceHolder
         };
 
         hr = g_pd3dDevice->CreateInputLayout(
-            iaDesc.data(), (UINT)iaDesc.size(),
-            fileContents.data(), fileContents.size(),
+            input_description.data(), (UINT)input_description.size(),
+            file_contents.data(), file_contents.size(),
             vs.m_pInputLayout.GetAddressOf()
         );
         test_hresult(hr, "could not create vertex shader");
@@ -98,10 +99,10 @@ struct D3DDeviceHolder
     {
         Microsoft::WRL::ComPtr <ID3D11PixelShader> m_pPixelShader;
         std::ifstream pShader{ "PixelShader.cso",  std::ios::binary };
-        std::vector<char> fileContents((std::istreambuf_iterator<char>(pShader)),
+        const std::vector<char> fileContents((std::istreambuf_iterator<char>(pShader)),
             std::istreambuf_iterator<char>());
 
-        HRESULT hr = g_pd3dDevice->CreatePixelShader(
+        const HRESULT hr = g_pd3dDevice->CreatePixelShader(
             fileContents.data(),
             fileContents.size(),
             nullptr,
@@ -115,7 +116,7 @@ struct D3DDeviceHolder
     {
         Microsoft::WRL::ComPtr <ID3D11Buffer> m_pConstantBuffer;
         CD3D11_BUFFER_DESC cbDesc{
-        sizeof(ConstantBufferStruct),
+        sizeof(constant_buffer_struct),
         D3D11_BIND_CONSTANT_BUFFER
         };
 
@@ -157,7 +158,7 @@ struct D3DDeviceHolder
         }
         return m_pVertexBuffer;
     }
-    Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(std::vector<unsigned short> CubeIndices) const
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_index_buffer(const std::vector<unsigned short> & CubeIndices) const
     {
         Microsoft::WRL::ComPtr < ID3D11Buffer> m_pIndexBuffer;
         CD3D11_BUFFER_DESC iDesc{
@@ -165,7 +166,7 @@ struct D3DDeviceHolder
             D3D11_BIND_INDEX_BUFFER
         };
 
-        D3D11_SUBRESOURCE_DATA iData{ CubeIndices.data(), 0, 0 };
+        const D3D11_SUBRESOURCE_DATA iData{ CubeIndices.data(), 0, 0 };
 
         HRESULT hr = g_pd3dDevice->CreateBuffer(
             &iDesc,
@@ -199,11 +200,11 @@ struct D3DDeviceHolder
         return m_pDepthStencilView;
     }
 
-    void set_buffers(Microsoft::WRL::ComPtr <ID3D11Buffer>& vertex_buffer, Microsoft::WRL::ComPtr < ID3D11Buffer>& index_buffer) const
+    void set_buffers(const Microsoft::WRL::ComPtr <ID3D11Buffer>& vertex_buffer, const Microsoft::WRL::ComPtr < ID3D11Buffer>& index_buffer) const
     {
         // Set up the IA stage by setting the input topology and layout.
-        UINT stride = sizeof(VertexPositionColor);
-        UINT offset = 0;
+        const UINT stride = sizeof(VertexPositionColor);
+        const UINT offset = 0;
 
         g_pd3dDeviceContext->IASetVertexBuffers(
             0,
@@ -225,7 +226,7 @@ struct D3DDeviceHolder
     }
 
     void setup_shaders(const vertex_shader_holder& vertex_shader,
-        Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader) const
+        const Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, const Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader) const
     {
         g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
 
@@ -249,7 +250,7 @@ struct D3DDeviceHolder
             0
         );
     }
-    void draw_scene(int m_indexCount) const
+    void draw_scene(const int m_indexCount) const
     {
         // Calling Draw tells Direct3D to start sending commands to the graphics device.
         g_pd3dDeviceContext->DrawIndexed(
@@ -261,7 +262,7 @@ struct D3DDeviceHolder
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
         // Present
-        HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
+        const HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
         test_hresult(hr, "could not draw");
     }
 };
@@ -322,7 +323,13 @@ struct ViewportConfigurationManager
     }
     DirectX::XMVECTOR calc_at() const;
     void stop_dragging();
-    void reset_defaults();
+    void reset_defaults()
+    {
+        eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
+        at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+        zoom_factor = 10;
+    }
     void front_view()
     {
         using namespace DirectX;
@@ -361,7 +368,7 @@ export struct gui_wrapper
 {
     std::array<char, 500> prescription{ '1', ',', '4', ',', '1', ',', '4'};
 
-    void present_using_imgui( float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, DirectX::XMFLOAT3 center, const std::string_view error)
+    void present_using_imgui( const float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, const DirectX::XMFLOAT3 center, const std::string_view error)
     {
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
@@ -476,7 +483,7 @@ struct imgui_context_holder
 
 struct imgui_win32_holder
 {
-    imgui_win32_holder(HWND hwnd)
+    imgui_win32_holder(const HWND hwnd)
     {
         auto res = ImGui_ImplWin32_Init(hwnd);
         if (!res)
@@ -512,10 +519,10 @@ struct imgui_holder
     imgui_win32_holder imgui_win32;
     imgui_dx11_holder imgui_dx11;
 
-    imgui_holder(HWND hwnd, Microsoft::WRL::ComPtr<ID3D11Device>& g_pd3dDevice, Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext) :
+    imgui_holder(const HWND hwnd, const Microsoft::WRL::ComPtr<ID3D11Device>& d3d_device, const Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext) :
         imgui_context{},
         imgui_win32{ hwnd },
-        imgui_dx11{ g_pd3dDevice.Get(), g_pd3dDeviceContext.Get() }
+        imgui_dx11{ d3d_device.Get(), g_pd3dDeviceContext.Get() }
     {
 
     }
@@ -523,10 +530,10 @@ struct imgui_holder
 
 render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice);
 
-ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
+constant_buffer_struct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
 {
     using namespace DirectX;
-    ConstantBufferStruct m_constantBufferData{};
+    constant_buffer_struct m_constantBufferData{};
 
     auto eye = viewport_config.calc_eye();
     auto at = viewport_config.calc_at();
@@ -551,20 +558,13 @@ ConstantBufferStruct calculate_projections(const D3D11_TEXTURE2D_DESC& m_bbDesc)
             )
         )
     );
-    rotation_data_gui rot;
     DirectX::XMStoreFloat4x4(
         &m_constantBufferData.world,
         DirectX::XMMatrixTranspose(
             DirectX::XMMatrixRotationRollPitchYaw(
-                DirectX::XMConvertToRadians(
-                    rot.pitch
-                ),
-                DirectX::XMConvertToRadians(
-                    rot.yaw
-                ),
-                DirectX::XMConvertToRadians(
-                    rot.roll
-                )
+                DirectX::XMConvertToRadians(0),
+                DirectX::XMConvertToRadians(0),
+                DirectX::XMConvertToRadians(0)
             )
         )
     );
@@ -616,9 +616,9 @@ export struct application_basics
             teal
         );
     }
-    void update_constant_struct(Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer)
+    void update_constant_struct(const Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer)
     {
-        auto constant_struct = calculate_projections(target_view->m_bbDesc);
+        const auto constant_struct = calculate_projections(target_view->m_bbDesc);
 
         d3dDevice.g_pd3dDeviceContext->UpdateSubresource(
             constant_buffer.Get(),
@@ -641,7 +641,7 @@ export struct application_basics
             D3D11_BIND_DEPTH_STENCIL
         );
 
-        HRESULT res = d3dDevice.g_pd3dDevice->CreateTexture2D(
+        const HRESULT res = d3dDevice.g_pd3dDevice->CreateTexture2D(
             &depthStencilDesc,
             nullptr,
             m_pDepthStencil.GetAddressOf()
@@ -679,7 +679,7 @@ export struct application_basics
     }
 };
 
-static_assert((sizeof(ConstantBufferStruct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
+static_assert((sizeof(constant_buffer_struct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
 
 D3DDeviceHolder init_d3d_device(HWND hWnd)
 {
@@ -735,6 +735,50 @@ render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice)
 }
 
 // Forward declare message handler from imgui_impl_win32.cpp
+
+LRESULT  handle_mouse_wheel(WPARAM wParam)
+{
+    using namespace DirectX;
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+    {
+        return 0;
+    }
+    auto delta = (int16_t)HIWORD(wParam);
+    auto scaling = exp(delta / 1200.);
+    viewport_config.zoom_factor *= (float)scaling;
+    return 0;
+}
+
+LRESULT  handle_key_down(WPARAM wParam)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureKeyboard)
+    {
+        return 0;
+    }
+    if (wParam == VK_LEFT)
+    {
+        viewport_config.eye = viewport_config.rotaded_eye(-30, 0);
+        viewport_config.up = viewport_config.updated_up();
+    }
+    if (wParam == VK_RIGHT)
+    {
+        viewport_config.eye = viewport_config.rotaded_eye(30, 0);
+        viewport_config.up = viewport_config.updated_up();
+    }
+    if (wParam == VK_UP)
+    {
+        viewport_config.eye = viewport_config.rotaded_eye(0, -30);
+        viewport_config.up = viewport_config.updated_up();
+    }
+    if (wParam == VK_DOWN)
+    {
+        viewport_config.eye = viewport_config.rotaded_eye(0, 30);
+        viewport_config.up = viewport_config.updated_up();
+    }
+    return 0;
+}
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -793,47 +837,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         viewport_config.stop_dragging();
         return 0;
     case WM_MOUSEWHEEL:
-    {
-        using namespace DirectX;
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.WantCaptureMouse)
-        {
-            return 0;
-        }
-        auto delta = (int16_t)HIWORD(wParam);
-        auto scaling = exp(delta / 1200.);
-        viewport_config.zoom_factor *= (float)scaling;
-        return 0;
-    }
+        return handle_mouse_wheel(wParam);
     case WM_KEYDOWN:
-    {
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.WantCaptureKeyboard)
-        {
-            return 0;
-        }
-        if (wParam == VK_LEFT)
-        {
-            viewport_config.eye = viewport_config.rotaded_eye(-30, 0);
-            viewport_config.up = viewport_config.updated_up();
-        }
-        if (wParam == VK_RIGHT)
-        {
-            viewport_config.eye = viewport_config.rotaded_eye(30, 0);
-            viewport_config.up = viewport_config.updated_up();
-        }
-        if (wParam == VK_UP)
-        {
-            viewport_config.eye = viewport_config.rotaded_eye(0, -30);
-            viewport_config.up = viewport_config.updated_up();
-        }
-        if (wParam == VK_DOWN)
-        {
-            viewport_config.eye = viewport_config.rotaded_eye(0, 30);
-            viewport_config.up = viewport_config.updated_up();
-        }
-        return 0;
-    }
+        return handle_key_down(wParam);
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 }
@@ -872,12 +878,4 @@ void ViewportConfigurationManager::stop_dragging()
     at = new_at;
     dragging = false;
     right_dragging = false;
-}
-
-void ViewportConfigurationManager::reset_defaults()
-{
-    eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
-    at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
-    up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-    zoom_factor = 10;
 }

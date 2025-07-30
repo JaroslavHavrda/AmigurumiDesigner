@@ -14,6 +14,7 @@ import gui_wrapper;
 #include <limits>
 #include <string>
 #include <stdexcept>
+#include <iostream>
 
 // Data
 
