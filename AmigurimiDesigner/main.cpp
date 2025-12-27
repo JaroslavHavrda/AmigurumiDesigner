@@ -15,6 +15,7 @@ import gui_wrapper;
 #include <string>
 #include <stdexcept>
 #include <iostream>
+#include <chrono>
 
 // Data
 
@@ -209,6 +210,7 @@ int main(int, char**)
     prescription_parser prescription;
     while (true)
     {
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
         if (process_messages())
             break;
         if (app.d3dDevice.is_ocluded())
@@ -225,6 +227,8 @@ int main(int, char**)
         gui.present_using_imgui(height, app.target_view->m_bbDesc, center, prescription.error );
         prescription.update_prescription({ gui.prescription.data(), std::strlen( gui.prescription.data()) });
         app.draw_vertices(vertices, application_resources);
+        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+        std::cout << "Loop duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
     }
     return 0;
 }

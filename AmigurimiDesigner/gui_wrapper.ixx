@@ -288,7 +288,14 @@ struct ViewportConfigurationManager
     bool dragging = false;
     bool right_dragging = false;
 
-    DirectX::XMVECTOR calc_eye() const;
+    DirectX::XMVECTOR calc_eye() const
+    {
+        float y_diff = dragging ? ((float)current_pos.y - drag_start.y) : 0;
+        float x_diff = dragging ? ((float)current_pos.x - drag_start.x) : 0;
+
+        return rotaded_eye(x_diff, y_diff);
+    }
+
     DirectX::XMVECTOR rotaded_eye(float x_diff, float y_diff) const
     {
         using namespace DirectX;
@@ -321,8 +328,33 @@ struct ViewportConfigurationManager
         auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
         return new_up;
     }
-    DirectX::XMVECTOR calc_at() const;
-    void stop_dragging();
+    DirectX::XMVECTOR calc_at() const
+    {
+        using namespace DirectX;
+        if (!right_dragging)
+        {
+            return at;
+        }
+        auto center_direction = eye - at;
+        auto normalized_direction = XMVector3Normalize(center_direction);
+        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
+        auto real_up = XMVector3Cross(normalized_direction, left);
+        float y_diff = (float)current_pos.y - drag_start.y;
+        float x_diff = (float)current_pos.x - drag_start.x;
+        return at + y_diff * zoom_factor / 1000 * real_up - x_diff * zoom_factor / 1000 * left;
+    }
+    void stop_dragging()
+    {
+        auto new_eye = calc_eye();
+        auto new_up = calc_up();
+        auto new_at = calc_at();
+        eye = new_eye;
+        up = new_up;
+        at = new_at;
+        dragging = false;
+        right_dragging = false;
+    }
+
     void reset_defaults()
     {
         eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
@@ -750,7 +782,7 @@ LRESULT  handle_mouse_wheel(WPARAM wParam)
     return 0;
 }
 
-LRESULT  handle_key_down(WPARAM wParam)
+static LRESULT  handle_key_down(WPARAM wParam)
 {
     ImGuiIO& io = ImGui::GetIO();
     if (io.WantCaptureKeyboard)
@@ -780,6 +812,49 @@ LRESULT  handle_key_down(WPARAM wParam)
     return 0;
 }
 
+static LRESULT handle_button_up()
+{
+    viewport_config.stop_dragging();
+    return 0;
+}
+
+static LRESULT handle_mouse_move(LPARAM lParam)
+{
+    viewport_config.current_pos.x = GET_X_LPARAM(lParam);
+    viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
+    return 0;
+}
+
+static LRESULT handle_rbutton_down(LPARAM lParam)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+    {
+        return 0;
+    }
+    viewport_config.current_pos.x = GET_X_LPARAM(lParam);
+    viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
+    viewport_config.drag_start.x = GET_X_LPARAM(lParam);
+    viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
+    viewport_config.right_dragging = true;
+    return 0;
+}
+
+LRESULT handle_lbutton_down(LPARAM lParam)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+    {
+        return 0;
+    }
+    viewport_config.current_pos.x = GET_X_LPARAM(lParam);
+    viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
+    viewport_config.drag_start.x = GET_X_LPARAM(lParam);
+    viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
+    viewport_config.dragging = true;
+    return 0;
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (auto res = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
@@ -801,81 +876,18 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         ::PostQuitMessage(0);
         return 0;
     case WM_LBUTTONDOWN:
-    {
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.WantCaptureMouse)
-        {
-            return 0;
-        }
-        viewport_config.current_pos.x = GET_X_LPARAM(lParam);
-        viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
-        viewport_config.drag_start.x = GET_X_LPARAM(lParam);
-        viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
-        viewport_config.dragging = true;
-        return 0;
-    }
+        return handle_lbutton_down(lParam);
     case WM_RBUTTONDOWN:
-    {
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.WantCaptureMouse)
-        {
-            return 0;
-        }
-        viewport_config.current_pos.x = GET_X_LPARAM(lParam);
-        viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
-        viewport_config.drag_start.x = GET_X_LPARAM(lParam);
-        viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
-        viewport_config.right_dragging = true;
-        return 0;
-    }
+        return handle_rbutton_down(lParam);
     case WM_MOUSEMOVE:
-        viewport_config.current_pos.x = GET_X_LPARAM(lParam);
-        viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
-        return 0;
+        return handle_mouse_move(lParam);
     case WM_RBUTTONUP:
     case WM_LBUTTONUP:
-        viewport_config.stop_dragging();
-        return 0;
+        return handle_button_up();
     case WM_MOUSEWHEEL:
         return handle_mouse_wheel(wParam);
     case WM_KEYDOWN:
         return handle_key_down(wParam);
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-DirectX::XMVECTOR ViewportConfigurationManager::calc_eye() const
-{
-    float y_diff = dragging ? ((float)current_pos.y - drag_start.y) : 0;
-    float x_diff = dragging ? ((float)current_pos.x - drag_start.x) : 0;
-
-    return rotaded_eye(x_diff, y_diff);
-}
-
-DirectX::XMVECTOR ViewportConfigurationManager::calc_at() const
-{
-    using namespace DirectX;
-    if (!right_dragging)
-    {
-        return at;
-    }
-    auto center_direction = eye - at;
-    auto normalized_direction = XMVector3Normalize(center_direction);
-    auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
-    auto real_up = XMVector3Cross(normalized_direction, left);
-    float y_diff = (float)current_pos.y - drag_start.y;
-    float x_diff = (float)current_pos.x - drag_start.x;
-    return at + y_diff /60 * real_up - x_diff /60 * left;
-}
-
-void ViewportConfigurationManager::stop_dragging()
-{
-    auto new_eye = calc_eye();
-    auto new_up = calc_up();
-    auto new_at = calc_at();
-    eye = new_eye;
-    up = new_up;
-    at = new_at;
-    dragging = false;
-    right_dragging = false;
 }
