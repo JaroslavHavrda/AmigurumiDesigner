@@ -19,19 +19,7 @@ module;
 #include <iostream>
 
 export module gui_wrapper;
-
-struct vertex_shader_holder
-{
-    Microsoft::WRL::ComPtr <ID3D11VertexShader> m_pVertexShader;
-    Microsoft::WRL::ComPtr <ID3D11InputLayout> m_pInputLayout;
-};
-
-struct frame_resources
-{
-    Microsoft::WRL::ComPtr <ID3D11Buffer> vertex_buffer;
-    Microsoft::WRL::ComPtr <ID3D11Buffer> index_buffer;
-    UINT m_indexCount;
-};
+import direct_x_structures;
 
 export struct VertexPositionColor
 {
@@ -355,26 +343,27 @@ struct ViewportConfigurationManager
         right_dragging = false;
     }
 
-    void reset_defaults()
+    void reset_defaults(DirectX::XMFLOAT3 pos )
     {
-        eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
-        at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        using namespace DirectX;
+        at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
+        eye = at + DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
         up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
         zoom_factor = 10;
     }
-    void front_view()
+    void front_view(DirectX::XMFLOAT3 pos )
     {
         using namespace DirectX;
         auto center_direction = eye - at;
-        at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
         up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
         eye = at + XMVectorSet(0.0f, 0.f, 1.f, 0.f);
     }
-    void top_view()
+    void top_view(DirectX::XMFLOAT3 pos )
     {
         using namespace DirectX;
         auto center_direction = eye - at;
-        at = XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
+        at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
         up = XMVectorSet(0.0f, 0.0f, -1.0f, 0.f);
         eye = at + XMVectorSet(0.0f, 1.f, 0.f, 0.f);
     }
@@ -411,13 +400,13 @@ export struct gui_wrapper
         ImGui::End();
         ImGui::Begin("Rotation");
         if (ImGui::Button("default view")) {
-            viewport_config.reset_defaults();
+            viewport_config.reset_defaults(center);
         }
         if (ImGui::Button("front view")) {
-            viewport_config.front_view();
+            viewport_config.front_view(center);
         }
         if (ImGui::Button("top view")) {
-            viewport_config.top_view();
+            viewport_config.top_view(center);
         }
         if (ImGui::Button("optimal zoom"))
         {
