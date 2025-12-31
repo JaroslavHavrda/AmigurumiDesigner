@@ -1,4 +1,5 @@
 import gui_wrapper;
+import direct_x_structures;
 
 #define NOMINMAX
 #include <Windows.h>
