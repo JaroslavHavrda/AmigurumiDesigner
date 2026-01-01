@@ -51,6 +51,26 @@ export struct gui_wrapper
         {
             viewport_config.set_at(center);
         }
+        if (ImGui::Button("orbit left"))
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(-30, 0);
+            viewport_config.up = viewport_config.updated_up();
+        }
+        if (ImGui::Button("orbit right"))
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(30, 0);
+            viewport_config.up = viewport_config.updated_up();
+        }
+        if (ImGui::Button("orbit up"))
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(0, 30);
+            viewport_config.up = viewport_config.updated_up();
+        }
+        if (ImGui::Button("orbit down"))
+        {
+            viewport_config.eye = viewport_config.rotaded_eye(0, -30);
+            viewport_config.up = viewport_config.updated_up();
+        }
         ImGui::End();
         ImGui::Render();
     }
@@ -387,36 +407,30 @@ static LRESULT  handle_key_down(WPARAM wParam)
         viewport_config.eye = viewport_config.rotaded_eye(30, 0);
         viewport_config.up = viewport_config.updated_up();
         break;
-    }
-    if (wParam == VK_UP)
-    {
+    case VK_UP:
         viewport_config.eye = viewport_config.rotaded_eye(0, -30);
         viewport_config.up = viewport_config.updated_up();
-    }
-    if (wParam == VK_DOWN)
-    {
+        break;
+    case VK_DOWN:
         viewport_config.eye = viewport_config.rotaded_eye(0, 30);
         viewport_config.up = viewport_config.updated_up();
-    }
-    if (wParam == 'A')
-    {
-        viewport_config.at = viewport_config.shifted_at(10,0);
+        break;
+    case 'A':
+        viewport_config.at = viewport_config.shifted_at(10, 0);
         viewport_config.eye = viewport_config.shifted_eye(10, 0);
-    }
-    if (wParam == 'W')
-    {
+        break;
+    case 'W':
         viewport_config.at = viewport_config.shifted_at(0, 10);
         viewport_config.eye = viewport_config.shifted_eye(0, 10);
-    }
-    if (wParam == 'S')
-    {
+        break;
+    case 'S':
         viewport_config.at = viewport_config.shifted_at(0, -10);
         viewport_config.eye = viewport_config.shifted_eye(0, -10);
-    }
-    if (wParam == 'D')
-    {
+        break;
+    case 'D':
         viewport_config.at = viewport_config.shifted_at(-10, 0);
         viewport_config.eye = viewport_config.shifted_eye(-10, 0);
+        break;
     }
     if (wParam == 'Q')
     {
