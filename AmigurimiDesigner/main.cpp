@@ -1,5 +1,6 @@
 import gui_wrapper;
 import direct_x_structures;
+import application_basics;
 
 #define NOMINMAX
 #include <Windows.h>

@@ -44,6 +44,8 @@ export struct constant_buffer_struct {
     DirectX::XMFLOAT4X4 projection;
 };
 
+static_assert((sizeof(constant_buffer_struct) % 16) == 0, "Constant Buffer size must be 16-byte aligned");
+
 export void test_hresult(const HRESULT hr, const char* message)
 {
     if (hr != S_OK)
@@ -296,3 +298,34 @@ export struct global_resources
     Microsoft::WRL::ComPtr <ID3D11PixelShader> pixel_shader;
     Microsoft::WRL::ComPtr <ID3D11Buffer> constant_buffer;
 };
+
+export struct render_target_view_holder
+{
+    Microsoft::WRL::ComPtr <ID3D11Texture2D> pBackBuffer;
+    Microsoft::WRL::ComPtr <ID3D11RenderTargetView> g_mainRenderTargetView;
+    D3D11_TEXTURE2D_DESC    m_bbDesc{};
+    D3D11_VIEWPORT          m_viewport{};
+};
+
+export render_target_view_holder init_render_target_view(D3DDeviceHolder& d3ddevice)
+{
+    render_target_view_holder target;
+    auto res = d3ddevice.g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)(&(target.pBackBuffer)));
+    test_hresult(res, "no back buffer");
+    target.pBackBuffer->GetDesc(&target.m_bbDesc);
+
+    target.m_viewport = D3D11_VIEWPORT{
+        .Width = (float)target.m_bbDesc.Width,
+        .Height = (float)target.m_bbDesc.Height,
+        .MinDepth = 0,
+        .MaxDepth = 1 };
+
+    d3ddevice.g_pd3dDeviceContext->RSSetViewports(
+        1,
+        &(target.m_viewport)
+    );
+
+    res = d3ddevice.g_pd3dDevice->CreateRenderTargetView(target.pBackBuffer.Get(), nullptr, target.g_mainRenderTargetView.GetAddressOf());
+    test_hresult(res, "could not create render target view");
+    return target;
+}
