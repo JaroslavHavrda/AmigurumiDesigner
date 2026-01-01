@@ -78,6 +78,15 @@ export struct gui_wrapper
 
 UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
 
+LRESULT handle_size(WPARAM wParam, LPARAM lParam)
+{
+    if (wParam == SIZE_MINIMIZED)
+        return 0;
+    g_ResizeWidth = (UINT)LOWORD(lParam); // Queue resize
+    g_ResizeHeight = (UINT)HIWORD(lParam);
+    return 0;
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 struct WindowClassWrapper
@@ -400,19 +409,19 @@ static LRESULT  handle_key_down(WPARAM wParam)
     switch (wParam)
     {
     case VK_LEFT:
-        viewport_config.eye = viewport_config.rotaded_eye(-30, 0);
+        viewport_config.at = viewport_config.shifted_at(10, 0);
         viewport_config.up = viewport_config.updated_up();
         break;
     case VK_RIGHT:
-        viewport_config.eye = viewport_config.rotaded_eye(30, 0);
+        viewport_config.at = viewport_config.shifted_at(-10, 0);
         viewport_config.up = viewport_config.updated_up();
         break;
     case VK_UP:
-        viewport_config.eye = viewport_config.rotaded_eye(0, -30);
+        viewport_config.at = viewport_config.shifted_at(0, 10);
         viewport_config.up = viewport_config.updated_up();
         break;
     case VK_DOWN:
-        viewport_config.eye = viewport_config.rotaded_eye(0, 30);
+        viewport_config.at = viewport_config.shifted_at(0, -10);
         viewport_config.up = viewport_config.updated_up();
         break;
     case 'A':
@@ -431,14 +440,12 @@ static LRESULT  handle_key_down(WPARAM wParam)
         viewport_config.at = viewport_config.shifted_at(-10, 0);
         viewport_config.eye = viewport_config.shifted_eye(-10, 0);
         break;
-    }
-    if (wParam == 'Q')
-    {
+    case 'Q':
         viewport_config.zoom_factor /= 1.5f;
-    }
-    if (wParam == 'E')
-    {
+        break;
+    case 'E':
         viewport_config.zoom_factor *= 1.5f;
+        break;
     }
     return 0;
 }
@@ -486,6 +493,19 @@ LRESULT handle_lbutton_down(LPARAM lParam)
     return 0;
 }
 
+LRESULT handle_window_destroy()
+{
+    ::PostQuitMessage(0);
+    return 0;
+}
+
+LRESULT handle_syscommand(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
+        return 0;
+    return ::DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (auto res = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
@@ -494,18 +514,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     switch (msg)
     {
     case WM_SIZE:
-        if (wParam == SIZE_MINIMIZED)
-            return 0;
-        g_ResizeWidth = (UINT)LOWORD(lParam); // Queue resize
-        g_ResizeHeight = (UINT)HIWORD(lParam);
-        return 0;
+        return handle_size(wParam, lParam);
     case WM_SYSCOMMAND:
-        if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
-            return 0;
-        break;
+        return handle_syscommand(hWnd, msg, wParam, lParam);
     case WM_DESTROY:
-        ::PostQuitMessage(0);
-        return 0;
+        return handle_window_destroy();
     case WM_LBUTTONDOWN:
         return handle_lbutton_down(lParam);
     case WM_RBUTTONDOWN:
