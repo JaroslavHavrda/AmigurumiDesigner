@@ -181,6 +181,7 @@
     <ClCompile Include="direct_x_structures.ixx" />
     <ClCompile Include="gui_wrapper.ixx" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="projections.ixx" />
     <ClCompile Include="viewport_configuration.ixx" />
   </ItemGroup>
   <ItemGroup>

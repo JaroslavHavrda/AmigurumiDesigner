@@ -6,6 +6,9 @@
         "dx11-binding",
         "win32-binding"
       ]
+    },
+    {
+      "name": "ms-gsl"
     }
   ],
   "builtin-baseline": "47364fbc300756f64f7876b549d9422d5f3ec0d3"

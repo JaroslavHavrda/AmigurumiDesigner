@@ -5,7 +5,10 @@ import application_basics;
 #define NOMINMAX
 #include <Windows.h>
 #include <directxmath.h>
+#include <wrl\client.h>
 #include <d3d11.h>
+
+#include "gsl/gsl"
 
 #include <cmath>
 #include <vector>
@@ -33,10 +36,10 @@ static void draw_bottom_lid(vertex_representation & vr, const float diameter, co
 {
     test_vertex_vector_size(vr.vertices);
     vr.vertices.emplace_back(DirectX::XMFLOAT3{ 0.f, 0.f, 0.f }, DirectX::XMFLOAT3{ 1.f,   1.f,   1.f });
-    const unsigned short start_index = (unsigned short)vr.vertices.size();
+    const unsigned short start_index = gsl::narrow<unsigned short>( vr.vertices.size() );
     for (unsigned short i = 0; i < slice_count; ++i)
     {
-        const float angle = (float)(i * std::numbers::pi * 2 / slice_count);
+        const float angle = static_cast<float>(i * std::numbers::pi * 2 / slice_count);
         vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, 0.f, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 });
     }
     for (unsigned short i = 0; i < slice_count; ++i)
@@ -52,10 +55,10 @@ static void draw_top_lid(vertex_representation& vr, const float diameter, const 
 {
     test_vertex_vector_size(vr.vertices);
     vr.vertices.emplace_back(DirectX::XMFLOAT3{ 0.f, level, 0.f }, DirectX::XMFLOAT3{ 1.f,   1.f,   1.f });
-    const unsigned short start_index = (unsigned short)vr.vertices.size();
+    const unsigned short start_index = gsl::narrow<unsigned short>( vr.vertices.size() );
     for (unsigned short i = 0; i < slice_count; ++i)
     {
-        const float angle = (float)(i * std::numbers::pi * 2 / slice_count);
+        const float angle = static_cast<float>(i * std::numbers::pi * 2 / slice_count);
         vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, level, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 });
     }
     for (unsigned short i = 0; i < slice_count; ++i)
@@ -70,10 +73,10 @@ static void draw_top_lid(vertex_representation& vr, const float diameter, const 
 static void draw_side(vertex_representation & vr , const float diameter, const float previous_diameter, const int slice_count, const float level, const float height)
 {
     test_vertex_vector_size(vr.vertices);
-    unsigned short start_index = (unsigned short)vr.vertices.size();
+    const unsigned short start_index = gsl::narrow<unsigned short>( vr.vertices.size() );
     for (unsigned short i = 0; i < slice_count; ++i)
     {
-        float angle = (float)(i * std::numbers::pi * 2 / slice_count);
+        const float angle = static_cast<float>(i * std::numbers::pi * 2 / slice_count);
         vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * previous_diameter, level + 0.f, std::cos(angle) * previous_diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 });
         vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, level + height, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 });
     }
@@ -91,10 +94,10 @@ static void draw_side(vertex_representation & vr , const float diameter, const f
     test_vertex_vector_size(vr.vertices);
 }
 
-static float layer_height(const float previous_radius, const float radius)
+static float layer_height(const float previous_radius, const float radius) noexcept
 {
     const float distance_difference = (previous_radius - radius);
-    const float length = 4.;
+    constexpr float length = 4.;
     const float height = std::sqrt(length * length - distance_difference * distance_difference);
     return height;
 }
@@ -115,7 +118,7 @@ static vertex_representation calc_vertices(const std::vector<float> & radiuses)
         
         if (!first_slice)
         {
-            float height = layer_height(previous_radius, radius);
+            const float height = layer_height(previous_radius, radius);
             draw_side(vert_res, radius, previous_radius, slice_count, level, height);
             level += height;
         }
@@ -127,7 +130,7 @@ static vertex_representation calc_vertices(const std::vector<float> & radiuses)
     return vert_res;
 }
 
-static bool process_messages()
+static bool process_messages() noexcept
 {
     bool done = false;
     MSG msg;
@@ -154,10 +157,18 @@ struct prescription_parser
         for (const auto& item : std::views::split(prescription, ","sv))
         {
             int parsed_number = 1;
-            auto [ptr, err] = std::from_chars(item.data(), item.data() + item.size(), parsed_number);
-            if (err != std::errc())
+            std::string sv{ item.begin(), item.end() };
+            try {
+                parsed_number = std::stoi(sv);
+            }
+            catch (std::invalid_argument const& )
             {
-                error = "syntax_error"s + std::string(item.data(), item.data() + item.size());
+                error = "syntax_error"s + std::string(item.begin(), item.end());
+                return;
+            }
+            catch (std::out_of_range const& )
+            {
+                error = "¨too big number:"s + std::string(item.begin(), item.end());
                 return;
             }
             prescriptions_num.push_back((float)parsed_number);
@@ -173,7 +184,7 @@ struct prescription_parser
     }
 };
 
-static DirectX::XMFLOAT3 calc_center(const std::vector<VertexPositionColor> & vertices)
+static DirectX::XMFLOAT3 calc_center(const std::vector<VertexPositionColor> & vertices) noexcept
 {
     DirectX::XMFLOAT3 center{ 0,0,0 };
     int n = 0;
@@ -188,7 +199,7 @@ static DirectX::XMFLOAT3 calc_center(const std::vector<VertexPositionColor> & ve
     return center;
 }
 
-static float calc_height_needed(const std::vector<VertexPositionColor>& vertices)
+static float calc_height_needed(const std::vector<VertexPositionColor>& vertices) noexcept
 {
     float max_z = 0.f;
     float max_y = 0.f;
@@ -212,7 +223,7 @@ int main(int, char**)
     prescription_parser prescription;
     while (true)
     {
-        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
         if (process_messages())
             break;
         if (app.d3dDevice.is_ocluded())
@@ -229,8 +240,8 @@ int main(int, char**)
         gui.present_using_imgui(height, app.target_view->m_bbDesc, center, prescription.error );
         prescription.update_prescription({ gui.prescription.data(), std::strlen( gui.prescription.data()) });
         app.draw_vertices(vertices, application_resources);
-        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-        std::cout << "Loop duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
+        const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+        //std::cout << "Loop duration = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
     }
     return 0;
 }

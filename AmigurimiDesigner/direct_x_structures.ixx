@@ -107,7 +107,7 @@ export struct D3DDeviceHolder
         return m_pPixelShader;
     }
 
-    Microsoft::WRL::ComPtr <ID3D11Buffer> create_constant_buffer()
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_constant_buffer() const
     {
         Microsoft::WRL::ComPtr <ID3D11Buffer> m_pConstantBuffer;
         CD3D11_BUFFER_DESC cbDesc{

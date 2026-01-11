@@ -4,18 +4,20 @@ module;
 #include <d3d11.h>
 
 export module viewport_configuration;
+import std;
 
-export struct MousePosition
+struct MousePosition
 {
     int x = 0;
     int y = 0;
 };
 
-export struct ViewportConfigurationManager
+struct ViewportConfigurationManager
 {
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, -0.1f, 0.0f, 0.f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+    DirectX::XMVECTOR ref_up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+    DirectX::XMVECTOR center_direction = DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
 
     float zoom_factor = 10;
 
@@ -26,42 +28,55 @@ export struct ViewportConfigurationManager
 
     DirectX::XMVECTOR calc_eye() const
     {
-        float y_diff = dragging ? ((float)current_pos.y - drag_start.y) : 0;
-        float x_diff = dragging ? ((float)current_pos.x - drag_start.x) : 0;
-
-        return rotaded_eye(x_diff, y_diff);
+        using namespace DirectX;
+        return calc_at() - zoom_factor * calc_center_direction();
     }
 
-    DirectX::XMVECTOR rotaded_eye(float x_diff, float y_diff) const
+    DirectX::XMVECTOR calc_center_direction() const
     {
         using namespace DirectX;
-        auto center_direction = eye - at;
-        auto normalized_direction = XMVector3Normalize(center_direction);
-        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
-        auto real_up = XMVector3Cross(normalized_direction, left);
-        auto final_direction = normalized_direction + y_diff / 500 * real_up - x_diff / 500 * left;
-        auto normalized_resulting_direction = XMVector3Normalize(final_direction);
-
-        return calc_at() + zoom_factor * normalized_resulting_direction;
+        const float y_diff = dragging ? ((float)current_pos.y - drag_start.y) : 0;
+        const float x_diff = dragging ? ((float)current_pos.x - drag_start.x) : 0;
+        return rotated_center_direction(x_diff, y_diff);
     }
-    DirectX::XMVECTOR calc_up() const
+
+    DirectX::XMVECTOR rotated_center_direction(float x_diff, float y_diff) const
+    {
+        using namespace DirectX;
+        const auto normalized_direction = XMVector3Normalize(center_direction);
+        const auto left = XMVector3Normalize(XMVector3Cross(normalized_direction, up));
+        const auto real_up = XMVector3Cross(normalized_direction, left);
+        const auto x_rotation = XMMatrixRotationAxis(real_up, x_diff / 100);
+        const auto y_rotation = XMMatrixRotationAxis(left, -y_diff  / 100);
+        const auto x_rotated_vector = XMVector3Transform(normalized_direction, x_rotation);
+        const auto rotated_vector = XMVector3Transform(x_rotated_vector, y_rotation);
+        const auto normalized_resulting_direction = XMVector3Normalize(rotated_vector);
+
+        return normalized_resulting_direction;
+    }
+    DirectX::XMVECTOR calc_up()
     {
         using namespace DirectX;
         if (!dragging)
         {
-            return up;
+            ref_up = up;
         }
+        else {
 
-        return updated_up();
+            ref_up = updated_up();
+        }
+        return ref_up;
     }
     DirectX::XMVECTOR updated_up() const
     {
         using namespace DirectX;
-        auto original_direction = eye - at;
-        auto left = -XMVector3Cross(original_direction, up);
-        auto new_eye = calc_eye();
-        auto new_diraction = new_eye - at;
-        auto new_up = XMVector3Normalize(XMVector3Cross(new_diraction, left));
+        const auto left = XMVector3Cross(center_direction, ref_up);
+        const auto new_diraction = calc_center_direction();
+        const auto new_up = XMVector3Normalize(XMVector3Cross(left, new_diraction));
+        if (XMVectorGetX(XMVector3Dot(ref_up, new_up)) < 0)
+        {
+            return -new_up;
+        }
         return new_up;
     }
     DirectX::XMVECTOR calc_at() const
@@ -71,44 +86,37 @@ export struct ViewportConfigurationManager
         {
             return at;
         }
-        auto center_direction = eye - at;
-        auto normalized_direction = XMVector3Normalize(center_direction);
-        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
-        auto real_up = XMVector3Cross(normalized_direction, left);
-        float y_diff = (float)current_pos.y - drag_start.y;
-        float x_diff = (float)current_pos.x - drag_start.x;
-        return at + y_diff * zoom_factor / 1000 * real_up - x_diff * zoom_factor / 1000 * left;
+        const float y_diff = (float)current_pos.y - drag_start.y;
+        const float x_diff = (float)current_pos.x - drag_start.x;
+        return shifted_at(x_diff, y_diff);
     }
 
-    DirectX::XMVECTOR shifted_at(int x, int y) const
+    DirectX::XMVECTOR shifted_at(float x, float y) const
     {
         using namespace DirectX;
-        auto center_direction = eye - at;
-        auto normalized_direction = XMVector3Normalize(center_direction);
-        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
-        auto real_up = XMVector3Cross(normalized_direction, left);
-        return at + y * zoom_factor / 1000 * real_up - x * zoom_factor / 1000 * left;
+        const auto normalized_direction = XMVector3Normalize(center_direction);
+        const auto left = XMVector3Normalize(XMVector3Cross(normalized_direction, up));
+        const auto real_up = XMVector3Cross(normalized_direction, left);
+        return at - y * zoom_factor / 1000 * real_up - x * zoom_factor / 1000 * left;
     }
 
-    DirectX::XMVECTOR shifted_eye(int x, int y) const
+    void stop_dragging_left()
     {
-        using namespace DirectX;
-        auto center_direction = eye - at;
-        auto normalized_direction = XMVector3Normalize(center_direction);
-        auto left = XMVector3Normalize(XMVector3Cross(up, normalized_direction));
-        auto real_up = XMVector3Cross(normalized_direction, left);
-        return eye + y * zoom_factor / 1000 * real_up - x * zoom_factor / 1000 * left;
+        const auto new_up = calc_up();
+        const auto new_direction = calc_center_direction();
+        up = new_up;
+        center_direction = new_direction;
+        dragging = false;
     }
 
-    void stop_dragging()
+    void stop_dragging_right()
     {
-        auto new_eye = calc_eye();
-        auto new_up = calc_up();
-        auto new_at = calc_at();
-        eye = new_eye;
+        const auto new_up = calc_up();
+        const auto new_at = calc_at();
+        const auto new_direction = calc_center_direction();
         up = new_up;
         at = new_at;
-        dragging = false;
+        center_direction = new_direction;
         right_dragging = false;
     }
 
@@ -116,35 +124,30 @@ export struct ViewportConfigurationManager
     {
         using namespace DirectX;
         at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
-        eye = at + DirectX::XMVectorSet(0.0f, 7.f, 15.f, 0.f);
         up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
+        center_direction = DirectX::XMVectorSet(0.0f, -7.f, -15.f, 0.f);
         zoom_factor = 10;
     }
     void front_view(DirectX::XMFLOAT3 pos)
     {
         using namespace DirectX;
-        auto center_direction = eye - at;
         at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
         up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.f);
-        eye = at + XMVectorSet(0.0f, 0.f, 1.f, 0.f);
+        center_direction = XMVectorSet(0.0f, 0.f, 1.f, 0.f);
     }
     void top_view(DirectX::XMFLOAT3 pos)
     {
         using namespace DirectX;
-        auto center_direction = eye - at;
         at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
         up = XMVectorSet(0.0f, 0.0f, -1.0f, 0.f);
-        eye = at + XMVectorSet(0.0f, 1.f, 0.f, 0.f);
+        center_direction = XMVectorSet(0.0f, 1.f, 0.f, 0.f);
     }
 
     void optimal_size(float height, const D3D11_TEXTURE2D_DESC& m_bbDesc)
     {
         using namespace DirectX;
-        auto center_direction = eye - at;
         auto normalized_direction = XMVector3Normalize(center_direction);
         zoom_factor = height * 2000 / m_bbDesc.Height;
-        eye = at + zoom_factor
-            * normalized_direction;
     }
     void set_at(DirectX::XMFLOAT3 pos)
     {

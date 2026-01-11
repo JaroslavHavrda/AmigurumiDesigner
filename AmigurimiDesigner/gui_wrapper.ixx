@@ -12,13 +12,9 @@ module;
 #include <d3d11.h>
 #include <directxmath.h>
 
-#include <optional>
-#include <array>
-#include <iostream>
-
 export module gui_wrapper;
-import direct_x_structures;
 import viewport_configuration;
+import std;
 
 export struct gui_wrapper
 {
@@ -26,6 +22,7 @@ export struct gui_wrapper
 
     void present_using_imgui( const float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, const DirectX::XMFLOAT3 center, const std::string_view error)
     {
+        using namespace DirectX;
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
@@ -53,22 +50,22 @@ export struct gui_wrapper
         }
         if (ImGui::Button("orbit left"))
         {
-            viewport_config.eye = viewport_config.rotaded_eye(-30, 0);
+            viewport_config.center_direction = viewport_config.rotated_center_direction(30, 0);
             viewport_config.up = viewport_config.updated_up();
         }
         if (ImGui::Button("orbit right"))
         {
-            viewport_config.eye = viewport_config.rotaded_eye(30, 0);
+            viewport_config.center_direction = viewport_config.rotated_center_direction(-30, 0);
             viewport_config.up = viewport_config.updated_up();
         }
         if (ImGui::Button("orbit up"))
         {
-            viewport_config.eye = viewport_config.rotaded_eye(0, 30);
+            viewport_config.center_direction = viewport_config.rotated_center_direction(0, 30);
             viewport_config.up = viewport_config.updated_up();
         }
         if (ImGui::Button("orbit down"))
         {
-            viewport_config.eye = viewport_config.rotaded_eye(0, -30);
+            viewport_config.center_direction = viewport_config.rotated_center_direction(0,-30);
             viewport_config.up = viewport_config.updated_up();
         }
         ImGui::End();
@@ -78,7 +75,7 @@ export struct gui_wrapper
 
 export UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
 
-LRESULT handle_size(WPARAM wParam, LPARAM lParam)
+static LRESULT handle_size(WPARAM wParam, LPARAM lParam)
 {
     if (wParam == SIZE_MINIMIZED)
         return 0;
@@ -88,20 +85,20 @@ LRESULT handle_size(WPARAM wParam, LPARAM lParam)
 }
 
 
-LRESULT handle_syscommand(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static LRESULT handle_syscommand(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
         return 0;
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-LRESULT handle_window_destroy()
+static LRESULT handle_window_destroy()
 {
     ::PostQuitMessage(0);
     return 0;
 }
 
-LRESULT handle_lbutton_down(LPARAM lParam)
+static LRESULT handle_lbutton_down(LPARAM lParam)
 {
     ImGuiIO& io = ImGui::GetIO();
     if (io.WantCaptureMouse)
@@ -138,14 +135,21 @@ static LRESULT handle_mouse_move(LPARAM lParam)
     return 0;
 }
 
-static LRESULT handle_button_up()
+static LRESULT handle_l_button_up()
 {
-    viewport_config.stop_dragging();
+    viewport_config.stop_dragging_left();
+    return 0;
+}
+
+static LRESULT handle_r_button_up()
+{
+    viewport_config.stop_dragging_right();
     return 0;
 }
 
 static LRESULT  handle_key_down(WPARAM wParam)
 {
+    using namespace DirectX;
     std::cout << "wparam " << wParam << std::endl;
     ImGuiIO& io = ImGui::GetIO();
     if (io.WantCaptureKeyboard)
@@ -155,36 +159,48 @@ static LRESULT  handle_key_down(WPARAM wParam)
     switch (wParam)
     {
     case VK_LEFT:
+    {
+        auto old_eye = viewport_config.calc_eye();
         viewport_config.at = viewport_config.shifted_at(10, 0);
+        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
         viewport_config.up = viewport_config.updated_up();
         break;
+    }
     case VK_RIGHT:
+    {
+        auto old_eye = viewport_config.calc_eye();
         viewport_config.at = viewport_config.shifted_at(-10, 0);
+        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
         viewport_config.up = viewport_config.updated_up();
         break;
+    }
     case VK_UP:
+    {
+        auto old_eye = viewport_config.calc_eye();
         viewport_config.at = viewport_config.shifted_at(0, 10);
+        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
         viewport_config.up = viewport_config.updated_up();
         break;
+    }
     case VK_DOWN:
+    {
+        auto old_eye = viewport_config.calc_eye();
         viewport_config.at = viewport_config.shifted_at(0, -10);
+        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
         viewport_config.up = viewport_config.updated_up();
         break;
+    }
     case 'A':
         viewport_config.at = viewport_config.shifted_at(10, 0);
-        viewport_config.eye = viewport_config.shifted_eye(10, 0);
         break;
     case 'W':
         viewport_config.at = viewport_config.shifted_at(0, 10);
-        viewport_config.eye = viewport_config.shifted_eye(0, 10);
         break;
     case 'S':
         viewport_config.at = viewport_config.shifted_at(0, -10);
-        viewport_config.eye = viewport_config.shifted_eye(0, -10);
         break;
     case 'D':
         viewport_config.at = viewport_config.shifted_at(-10, 0);
-        viewport_config.eye = viewport_config.shifted_eye(-10, 0);
         break;
     case 'Q':
         viewport_config.zoom_factor /= 1.5f;
@@ -196,7 +212,7 @@ static LRESULT  handle_key_down(WPARAM wParam)
     return 0;
 }
 
-LRESULT  handle_mouse_wheel(WPARAM wParam)
+static LRESULT  handle_mouse_wheel(WPARAM wParam)
 {
     using namespace DirectX;
     ImGuiIO& io = ImGui::GetIO();
@@ -210,7 +226,7 @@ LRESULT  handle_mouse_wheel(WPARAM wParam)
     return 0;
 }
 
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (auto res = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return res;
@@ -230,8 +246,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_MOUSEMOVE:
         return handle_mouse_move(lParam);
     case WM_RBUTTONUP:
+        return handle_r_button_up();
     case WM_LBUTTONUP:
-        return handle_button_up();
+        return handle_l_button_up();
     case WM_MOUSEWHEEL:
         return handle_mouse_wheel(wParam);
     case WM_KEYDOWN:
