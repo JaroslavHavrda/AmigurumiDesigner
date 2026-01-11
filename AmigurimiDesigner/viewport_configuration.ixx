@@ -111,12 +111,9 @@ struct ViewportConfigurationManager
 
     void stop_dragging_right()
     {
-        const auto new_up = calc_up();
         const auto new_at = calc_at();
         const auto new_direction = calc_center_direction();
-        up = new_up;
         at = new_at;
-        center_direction = new_direction;
         right_dragging = false;
     }
 

@@ -12,6 +12,8 @@ import gui_wrapper;
 import direct_x_structures;
 import viewport_configuration;
 import projections;
+import hwnd_wrapper;
+import imgui_holder;
 import std;
 
 static void setup_imgui()
