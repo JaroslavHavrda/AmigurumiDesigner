@@ -26,7 +26,7 @@ import vertex_calculations;
 
 // Data
 
-static void test_vertex_vector_size(const std::vector<VertexPositionColor> & vertices)
+static void test_vertex_vector_size(const std::vector<vertex_position_color> & vertices)
 {
     if (vertices.size() > std::numeric_limits<unsigned short>::max())
     {

@@ -16,6 +16,7 @@ import hwnd_wrapper;
 import imgui_holder;
 import render_target_view_holder;
 import D3DDeviceHolder;
+import window_procs;
 import std;
 
 static void setup_imgui()
@@ -31,7 +32,7 @@ static void setup_imgui()
 export struct application_basics
 {
     WindowClassWrapper window_class;
-    HwndWrapper window{ window_class.wc };
+    hwnd_wrapper window{ window_class.wc };
     D3DDeviceHolder d3dDevice = init_d3d_device(window.hwnd);
     std::optional<render_target_view_holder> target_view = init_render_target_view(d3dDevice);
     imgui_holder imgui_instance{ window.hwnd, d3dDevice.g_pd3dDevice, d3dDevice.g_pd3dDeviceContext };
@@ -122,6 +123,6 @@ export struct application_basics
         set_depth_stencil_to_scene(m_pDepthStencilView);
         d3dDevice.set_buffers(frame_res.vertex_buffer, frame_res.index_buffer);
         d3dDevice.setup_shaders(application_resources.vertex_shader, application_resources.constant_buffer, application_resources.pixel_shader);
-        d3dDevice.draw_scene(frame_res.m_indexCount);
+        d3dDevice.draw_scene(frame_res.index_count);
     }
 };

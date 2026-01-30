@@ -6,11 +6,11 @@ module;
 export module hwnd_wrapper;
 import std;
 
-export struct HwndWrapper
+export struct hwnd_wrapper
 {
     HWND hwnd;
 
-    HwndWrapper(WNDCLASSEXW& wc)
+    hwnd_wrapper(WNDCLASSEXW& wc)
     {
         hwnd = ::CreateWindowW(wc.lpszClassName, L"Amigurumi designer", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
         if (hwnd == NULL)
@@ -18,7 +18,7 @@ export struct HwndWrapper
             throw std::runtime_error("could not creatw window");
         }
     }
-    ~HwndWrapper()
+    ~hwnd_wrapper()
     {
         ::DestroyWindow(hwnd);
     }

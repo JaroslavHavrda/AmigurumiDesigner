@@ -150,6 +150,11 @@ struct ViewportConfigurationManager
     {
         at = DirectX::XMVectorSet(pos.x, pos.y, pos.z, 0.f);
     }
+    void rotate_center(float x, float y)
+    {
+        center_direction = rotated_center_direction(x, y);
+        up = updated_up();
+    }
 };
 
 export ViewportConfigurationManager viewport_config;

@@ -42,9 +42,9 @@ struct imgui_win32_holder
 
 struct imgui_dx11_holder
 {
-    imgui_dx11_holder(ID3D11Device* g_pd3dDevice, ID3D11DeviceContext* g_pd3dDeviceContext)
+    imgui_dx11_holder(ID3D11Device* d3d_device, ID3D11DeviceContext* d3d_device_context)
     {
-        auto res = ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+        auto res = ImGui_ImplDX11_Init(d3d_device, d3d_device_context);
         if (!res)
         {
             throw std::runtime_error("could not init imgui DX11");
@@ -64,10 +64,10 @@ private:
     imgui_dx11_holder imgui_dx11;
 
 public:
-    imgui_holder(const HWND hwnd, const Microsoft::WRL::ComPtr<ID3D11Device>& d3d_device, const Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext) :
+    imgui_holder(const HWND hwnd, const Microsoft::WRL::ComPtr<ID3D11Device>& d3d_device, const Microsoft::WRL::ComPtr <ID3D11DeviceContext>& d3d_device_context) :
         imgui_context{},
         imgui_win32{ hwnd },
-        imgui_dx11{ d3d_device.Get(), g_pd3dDeviceContext.Get() }
+        imgui_dx11{ d3d_device.Get(), d3d_device_context.Get() }
     {
 
     }

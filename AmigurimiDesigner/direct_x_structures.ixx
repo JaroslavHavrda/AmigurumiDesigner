@@ -11,18 +11,18 @@ import std;
 
 export struct vertex_shader_holder
 {
-    Microsoft::WRL::ComPtr <ID3D11VertexShader> m_pVertexShader;
-    Microsoft::WRL::ComPtr <ID3D11InputLayout> m_pInputLayout;
+    Microsoft::WRL::ComPtr <ID3D11VertexShader> vertex_shader;
+    Microsoft::WRL::ComPtr <ID3D11InputLayout> input_layout;
 };
 
 export struct frame_resources
 {
     Microsoft::WRL::ComPtr <ID3D11Buffer> vertex_buffer;
     Microsoft::WRL::ComPtr <ID3D11Buffer> index_buffer;
-    UINT m_indexCount;
+    UINT index_count;
 };
 
-export struct VertexPositionColor
+export struct vertex_position_color
 {
     DirectX::XMFLOAT3 pos;
     DirectX::XMFLOAT3 color;
@@ -30,7 +30,7 @@ export struct VertexPositionColor
 
 export struct vertex_representation
 {
-    std::vector<VertexPositionColor> vertices;
+    std::vector<vertex_position_color> vertices;
     std::vector<unsigned short> indices;
 };
 

@@ -22,7 +22,7 @@ export struct D3DDeviceHolder
         const std::vector<char> file_contents((std::istreambuf_iterator<char>(shader_file)), std::istreambuf_iterator<char>());
         HRESULT hr = g_pd3dDevice->CreateVertexShader(
             file_contents.data(), file_contents.size(),
-            nullptr, vs.m_pVertexShader.GetAddressOf()
+            nullptr, vs.vertex_shader.GetAddressOf()
         );
         test_hresult(hr, "could not create vertex shader");
 
@@ -38,7 +38,7 @@ export struct D3DDeviceHolder
         hr = g_pd3dDevice->CreateInputLayout(
             input_description.data(), (UINT)input_description.size(),
             file_contents.data(), file_contents.size(),
-            vs.m_pInputLayout.GetAddressOf()
+            vs.input_layout.GetAddressOf()
         );
         test_hresult(hr, "could not create vertex shader");
 
@@ -87,11 +87,11 @@ export struct D3DDeviceHolder
     {
         return g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED;
     }
-    Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<VertexPositionColor>& CubeVertices) const
+    Microsoft::WRL::ComPtr <ID3D11Buffer> create_vertex_buffer(const std::vector<vertex_position_color>& CubeVertices) const
     {
         Microsoft::WRL::ComPtr <ID3D11Buffer> m_pVertexBuffer;
         CD3D11_BUFFER_DESC vDesc{
-        (UINT)(CubeVertices.size() * sizeof(VertexPositionColor)),
+        (UINT)(CubeVertices.size() * sizeof(vertex_position_color)),
         D3D11_BIND_VERTEX_BUFFER
         };
 
@@ -132,7 +132,7 @@ export struct D3DDeviceHolder
         return {
                 .vertex_buffer = create_vertex_buffer(vertices.vertices),
                 .index_buffer = create_index_buffer(vertices.indices),
-                .m_indexCount = (UINT)vertices.indices.size(),
+                .index_count = (UINT)vertices.indices.size(),
         };
     }
     Microsoft::WRL::ComPtr <ID3D11DepthStencilView> create_depth_stencil_view(Microsoft::WRL::ComPtr<ID3D11Texture2D>& m_pDepthStencil) const
@@ -153,7 +153,7 @@ export struct D3DDeviceHolder
     void set_buffers(const Microsoft::WRL::ComPtr <ID3D11Buffer>& vertex_buffer, const Microsoft::WRL::ComPtr < ID3D11Buffer>& index_buffer) const
     {
         // Set up the IA stage by setting the input topology and layout.
-        const UINT stride = sizeof(VertexPositionColor);
+        const UINT stride = sizeof(vertex_position_color);
         const UINT offset = 0;
 
         g_pd3dDeviceContext->IASetVertexBuffers(
@@ -178,11 +178,11 @@ export struct D3DDeviceHolder
     void setup_shaders(const vertex_shader_holder& vertex_shader,
         const Microsoft::WRL::ComPtr <ID3D11Buffer>& constant_buffer, const Microsoft::WRL::ComPtr <ID3D11PixelShader>& pixel_shader) const
     {
-        g_pd3dDeviceContext->IASetInputLayout(vertex_shader.m_pInputLayout.Get());
+        g_pd3dDeviceContext->IASetInputLayout(vertex_shader.input_layout.Get());
 
         // Set up the vertex shader stage.
         g_pd3dDeviceContext->VSSetShader(
-            vertex_shader.m_pVertexShader.Get(),
+            vertex_shader.vertex_shader.Get(),
             nullptr,
             0
         );

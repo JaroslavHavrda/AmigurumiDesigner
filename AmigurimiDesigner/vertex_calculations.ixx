@@ -6,7 +6,7 @@ export module vertex_calculations;
 import direct_x_structures;
 import std;
 
-export float calc_height_needed(const std::vector<VertexPositionColor>& vertices) noexcept
+export float calc_height_needed(const std::vector<vertex_position_color>& vertices) noexcept
 {
     float max_z = 0.f;
     float max_y = 0.f;
@@ -18,7 +18,7 @@ export float calc_height_needed(const std::vector<VertexPositionColor>& vertices
     return max_z + max_y;
 }
 
-export DirectX::XMFLOAT3 calc_center(const std::vector<VertexPositionColor>& vertices) noexcept
+export DirectX::XMFLOAT3 calc_center(const std::vector<vertex_position_color>& vertices) noexcept
 {
     DirectX::XMFLOAT3 center{ 0,0,0 };
     int n = 0;

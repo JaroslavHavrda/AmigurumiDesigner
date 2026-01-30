@@ -188,6 +188,7 @@
     <ClCompile Include="render_target_view_holder.ixx" />
     <ClCompile Include="vertex_calculations.ixx" />
     <ClCompile Include="viewport_configuration.ixx" />
+    <ClCompile Include="window_procs.ixx" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="PixelShader.hlsl">

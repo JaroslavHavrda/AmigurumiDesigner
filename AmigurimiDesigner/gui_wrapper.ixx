@@ -4,24 +4,19 @@ module;
 
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
-#include "imgui_hack.h"
 
-#include <windowsx.h>
-#include <Windows.h>
-#include <wrl\client.h>
 #include <d3d11.h>
 #include <directxmath.h>
 
 export module gui_wrapper;
 import viewport_configuration;
-import imgui_holder;
 import std;
 
 export struct gui_wrapper
 {
     std::array<char, 500> prescription{ '1', ',', '4', ',', '1', ',', '4'};
 
-    void present_using_imgui( const float height, const D3D11_TEXTURE2D_DESC& m_bbDesc, const DirectX::XMFLOAT3 center, const std::string_view error)
+    void present_using_imgui( const float height, const D3D11_TEXTURE2D_DESC& desc, const DirectX::XMFLOAT3 center, const std::string_view error)
     {
         using namespace DirectX;
         ImGui_ImplDX11_NewFrame();
@@ -32,6 +27,14 @@ export struct gui_wrapper
         ImGui::LabelText("", error.data());
         ImGui::End();
         ImGui::Begin("Rotation");
+        view_buttons(height, desc, center);
+        orbit_buttons();
+        ImGui::End();
+        ImGui::Render();
+    }
+private:
+    void view_buttons(const float height, const D3D11_TEXTURE2D_DESC& desc, const DirectX::XMFLOAT3 center)
+    {
         if (ImGui::Button("default view")) {
             viewport_config.reset_defaults(center);
         }
@@ -43,247 +46,35 @@ export struct gui_wrapper
         }
         if (ImGui::Button("optimal zoom"))
         {
-            viewport_config.optimal_size(height, m_bbDesc);
+            viewport_config.optimal_size(height, desc);
         }
         if (ImGui::Button("center the object"))
         {
             viewport_config.set_at(center);
         }
+    }
+    void orbit_buttons()
+    {
         ImGui::Button("orbit left");
         if (ImGui::IsItemActive())
         {
-            viewport_config.center_direction = viewport_config.rotated_center_direction(3, 0);
-            viewport_config.up = viewport_config.updated_up();
+            viewport_config.rotate_center(3, 0);
         }
         ImGui::Button("orbit right");
         if (ImGui::IsItemActive())
         {
-            viewport_config.center_direction = viewport_config.rotated_center_direction(-3, 0);
-            viewport_config.up = viewport_config.updated_up();
+            viewport_config.rotate_center(-3, 0);
         }
         ImGui::Button("orbit up");
         if (ImGui::IsItemActive())
         {
-            viewport_config.center_direction = viewport_config.rotated_center_direction(0, 3);
-            viewport_config.up = viewport_config.updated_up();
+            viewport_config.rotate_center(0, 3);
         }
         ImGui::Button("orbit down");
         if (ImGui::IsItemActive())
         {
-            viewport_config.center_direction = viewport_config.rotated_center_direction(0,-3);
-            viewport_config.up = viewport_config.updated_up();
-        }
-        ImGui::End();
-        ImGui::Render();
-    }
-};
-
-export UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
-
-static LRESULT handle_size(WPARAM wParam, LPARAM lParam)
-{
-    if (wParam == SIZE_MINIMIZED)
-        return 0;
-    g_ResizeWidth = (UINT)LOWORD(lParam); // Queue resize
-    g_ResizeHeight = (UINT)HIWORD(lParam);
-    return 0;
-}
-
-
-static LRESULT handle_syscommand(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
-        return 0;
-    return ::DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-static LRESULT handle_window_destroy()
-{
-    ::PostQuitMessage(0);
-    return 0;
-}
-
-static LRESULT handle_lbutton_down(LPARAM lParam)
-{
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse)
-    {
-        return 0;
-    }
-    viewport_config.current_pos.x = GET_X_LPARAM(lParam);
-    viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
-    viewport_config.drag_start.x = GET_X_LPARAM(lParam);
-    viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
-    viewport_config.dragging = true;
-    return 0;
-}
-
-static LRESULT handle_rbutton_down(LPARAM lParam)
-{
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse)
-    {
-        return 0;
-    }
-    viewport_config.current_pos.x = GET_X_LPARAM(lParam);
-    viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
-    viewport_config.drag_start.x = GET_X_LPARAM(lParam);
-    viewport_config.drag_start.y = GET_Y_LPARAM(lParam);
-    viewport_config.right_dragging = true;
-    return 0;
-}
-
-static LRESULT handle_mouse_move(LPARAM lParam)
-{
-    viewport_config.current_pos.x = GET_X_LPARAM(lParam);
-    viewport_config.current_pos.y = GET_Y_LPARAM(lParam);
-    return 0;
-}
-
-static LRESULT handle_l_button_up()
-{
-    viewport_config.stop_dragging_left();
-    return 0;
-}
-
-static LRESULT handle_r_button_up()
-{
-    viewport_config.stop_dragging_right();
-    return 0;
-}
-
-static LRESULT  handle_key_down(WPARAM wParam)
-{
-    using namespace DirectX;
-    std::cout << "wparam " << wParam << std::endl;
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureKeyboard)
-    {
-        return 0;
-    }
-    switch (wParam)
-    {
-    case VK_LEFT:
-    {
-        auto old_eye = viewport_config.calc_eye();
-        viewport_config.at = viewport_config.shifted_at(10, 0);
-        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
-        viewport_config.up = viewport_config.updated_up();
-        break;
-    }
-    case VK_RIGHT:
-    {
-        auto old_eye = viewport_config.calc_eye();
-        viewport_config.at = viewport_config.shifted_at(-10, 0);
-        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
-        viewport_config.up = viewport_config.updated_up();
-        break;
-    }
-    case VK_UP:
-    {
-        auto old_eye = viewport_config.calc_eye();
-        viewport_config.at = viewport_config.shifted_at(0, 10);
-        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
-        viewport_config.up = viewport_config.updated_up();
-        break;
-    }
-    case VK_DOWN:
-    {
-        auto old_eye = viewport_config.calc_eye();
-        viewport_config.at = viewport_config.shifted_at(0, -10);
-        viewport_config.center_direction = XMVector3Normalize(viewport_config.at - old_eye);
-        viewport_config.up = viewport_config.updated_up();
-        break;
-    }
-    case 'A':
-        viewport_config.at = viewport_config.shifted_at(10, 0);
-        break;
-    case 'W':
-        viewport_config.at = viewport_config.shifted_at(0, 10);
-        break;
-    case 'S':
-        viewport_config.at = viewport_config.shifted_at(0, -10);
-        break;
-    case 'D':
-        viewport_config.at = viewport_config.shifted_at(-10, 0);
-        break;
-    case 'Q':
-        viewport_config.zoom_factor /= 1.5f;
-        break;
-    case 'E':
-        viewport_config.zoom_factor *= 1.5f;
-        break;
-    }
-    return 0;
-}
-
-static LRESULT  handle_mouse_wheel(WPARAM wParam)
-{
-    using namespace DirectX;
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse)
-    {
-        return 0;
-    }
-    auto delta = (int16_t)HIWORD(wParam);
-    auto scaling = exp(delta / 1200.);
-    viewport_config.zoom_factor *= (float)scaling;
-    return 0;
-}
-
-static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    if (auto res = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-        return res;
-
-    switch (msg)
-    {
-    case WM_SIZE:
-        return handle_size(wParam, lParam);
-    case WM_SYSCOMMAND:
-        return handle_syscommand(hWnd, msg, wParam, lParam);
-    case WM_DESTROY:
-        return handle_window_destroy();
-    case WM_LBUTTONDOWN:
-        return handle_lbutton_down(lParam);
-    case WM_RBUTTONDOWN:
-        return handle_rbutton_down(lParam);
-    case WM_MOUSEMOVE:
-        return handle_mouse_move(lParam);
-    case WM_RBUTTONUP:
-        return handle_r_button_up();
-    case WM_LBUTTONUP:
-        return handle_l_button_up();
-    case WM_MOUSEWHEEL:
-        return handle_mouse_wheel(wParam);
-    case WM_KEYDOWN:
-        return handle_key_down(wParam);
-    }
-    return ::DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-export struct WindowClassWrapper
-{
-    WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"Amigurumi Designer", nullptr };
-
-    WindowClassWrapper()
-    {
-        auto res = ::RegisterClassExW(&wc);
-        if (res == 0)
-        {
-            throw std::runtime_error("could not register window class");
+            viewport_config.rotate_center(0, -3);
         }
     }
-    ~WindowClassWrapper()
-    {
-        ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
-    }
-
 };
 
-struct rotation_data_gui
-{
-    float roll{ 0 };
-    float pitch{ 0 };
-    float yaw{ 0 };
-};
