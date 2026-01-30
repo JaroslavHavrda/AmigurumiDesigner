@@ -14,6 +14,8 @@ import viewport_configuration;
 import projections;
 import hwnd_wrapper;
 import imgui_holder;
+import render_target_view_holder;
+import D3DDeviceHolder;
 import std;
 
 static void setup_imgui()

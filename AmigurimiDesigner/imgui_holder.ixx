@@ -12,7 +12,7 @@ module;
 export module imgui_holder;
 import std;
 
-export struct imgui_context_holder
+struct imgui_context_holder
 {
     imgui_context_holder()
     {
@@ -24,7 +24,7 @@ export struct imgui_context_holder
     }
 };
 
-export struct imgui_win32_holder
+struct imgui_win32_holder
 {
     imgui_win32_holder(const HWND hwnd)
     {
@@ -58,10 +58,12 @@ struct imgui_dx11_holder
 
 export struct imgui_holder
 {
+private:
     imgui_context_holder imgui_context;
     imgui_win32_holder imgui_win32;
     imgui_dx11_holder imgui_dx11;
 
+public:
     imgui_holder(const HWND hwnd, const Microsoft::WRL::ComPtr<ID3D11Device>& d3d_device, const Microsoft::WRL::ComPtr <ID3D11DeviceContext>& g_pd3dDeviceContext) :
         imgui_context{},
         imgui_win32{ hwnd },

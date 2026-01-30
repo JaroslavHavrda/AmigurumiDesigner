@@ -1,6 +1,7 @@
 import gui_wrapper;
 import direct_x_structures;
 import application_basics;
+import vertex_calculations;
 
 #define NOMINMAX
 #include <Windows.h>
@@ -21,6 +22,7 @@ import application_basics;
 #include <stdexcept>
 #include <iostream>
 #include <chrono>
+#include <algorithm>
 
 // Data
 
@@ -184,33 +186,6 @@ struct prescription_parser
     }
 };
 
-static DirectX::XMFLOAT3 calc_center(const std::vector<VertexPositionColor> & vertices) noexcept
-{
-    DirectX::XMFLOAT3 center{ 0,0,0 };
-    int n = 0;
-    for (const auto& vertex : vertices)
-    {
-        n = n + 1;
-        center.x = center.x + (vertex.pos.x - center.x) / n;
-        center.y = center.y + (vertex.pos.y - center.y) / n;
-        center.z = center.z + (vertex.pos.z - center.z) / n;
-    }
-
-    return center;
-}
-
-static float calc_height_needed(const std::vector<VertexPositionColor>& vertices) noexcept
-{
-    float max_z = 0.f;
-    float max_y = 0.f;
-    for (const auto& vertex : vertices)
-    {
-        max_y = std::max(max_z, vertex.pos.y);
-        max_z = std::max(max_z, vertex.pos.z);
-    }
-    return max_z + max_y;
-}
-
 int main(int, char**)
 {
     application_basics app;
@@ -231,9 +206,7 @@ int main(int, char**)
             ::Sleep(10);
             continue;
         }
-        
         app.update_window_size();
-            
         const vertex_representation vertices = calc_vertices(prescription.parsed_numbers);
         const DirectX::XMFLOAT3 center = calc_center(vertices.vertices);
         const float height = calc_height_needed(vertices.vertices);

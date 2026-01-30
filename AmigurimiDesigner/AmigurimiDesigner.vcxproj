@@ -178,12 +178,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="application_basics.ixx" />
+    <ClCompile Include="D3DDeviceHolder.ixx" />
     <ClCompile Include="direct_x_structures.ixx" />
     <ClCompile Include="gui_wrapper.ixx" />
     <ClCompile Include="imgui_holder.ixx" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="hwnd_wrapper.ixx" />
     <ClCompile Include="projections.ixx" />
+    <ClCompile Include="render_target_view_holder.ixx" />
+    <ClCompile Include="vertex_calculations.ixx" />
     <ClCompile Include="viewport_configuration.ixx" />
   </ItemGroup>
   <ItemGroup>
