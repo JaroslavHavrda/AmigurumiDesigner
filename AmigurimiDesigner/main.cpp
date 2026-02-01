@@ -5,53 +5,12 @@ import vertex_calculations;
 
 #define NOMINMAX
 #include <Windows.h>
-#include <directxmath.h>
-#include <wrl\client.h>
-#include <d3d11.h>
 
 #include "gsl/gsl"
 
-#include <cmath>
-#include <vector>
-#include <string_view>
-#include <charconv>
-#include <numbers>
-#include <ranges>
-#include <limits>
-#include <string>
-#include <stdexcept>
-#include <iostream>
-#include <chrono>
-#include <algorithm>
+import std;
 
 // Data
-
-static void test_vertex_vector_size(const std::vector<vertex_position_color> & vertices)
-{
-    if (vertices.size() > std::numeric_limits<unsigned short>::max())
-    {
-        throw std::runtime_error("Too many vertices were generated.");
-    }
-}
-
-static void draw_bottom_lid(vertex_representation & vr, const float diameter, const int slice_count)
-{
-    test_vertex_vector_size(vr.vertices);
-    vr.vertices.emplace_back(DirectX::XMFLOAT3{ 0.f, 0.f, 0.f }, DirectX::XMFLOAT3{ 1.f,   1.f,   1.f });
-    const unsigned short start_index = gsl::narrow<unsigned short>( vr.vertices.size() );
-    for (unsigned short i = 0; i < slice_count; ++i)
-    {
-        const float angle = static_cast<float>(i * std::numbers::pi * 2 / slice_count);
-        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, 0.f, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 });
-    }
-    for (unsigned short i = 0; i < slice_count; ++i)
-    {
-        vr.indices.push_back((unsigned short)(start_index + i));
-        vr.indices.push_back((unsigned short)(start_index + (i + 1) % slice_count));
-        vr.indices.push_back((unsigned short)(start_index - 1));
-    }
-    test_vertex_vector_size(vr.vertices);
-}
 
 static void draw_top_lid(vertex_representation& vr, const float diameter, const int slice_count, const float level)
 {
@@ -186,6 +145,14 @@ struct prescription_parser
     }
 };
 
+std::vector<float> calc_diameters(const std::vector<float>& prescription)
+{
+    const auto arc_lengths = prescription | std::views::transform([](float count) {return count * 4; });
+    std::vector<float> res;
+    std::ranges::transform(arc_lengths, std::back_inserter(res), [](float d) {return d * std::numbers::inv_pi_v<float> /2.f;});
+    return res;
+}
+
 int main(int, char**)
 {
     application_basics app;
@@ -207,7 +174,8 @@ int main(int, char**)
             continue;
         }
         app.update_window_size();
-        const vertex_representation vertices = calc_vertices(prescription.parsed_numbers);
+        const auto diameters = calc_diameters(prescription.parsed_numbers);
+        const vertex_representation vertices = calc_vertices(diameters);
         const DirectX::XMFLOAT3 center = calc_center(vertices.vertices);
         const float height = calc_height_needed(vertices.vertices);
         gui.present_using_imgui(height, app.target_view->m_bbDesc, center, prescription.error );
