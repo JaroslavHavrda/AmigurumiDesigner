@@ -26,6 +26,7 @@ export struct vertex_position_color
 {
     DirectX::XMFLOAT3 pos;
     DirectX::XMFLOAT3 color;
+    DirectX::XMFLOAT3 normal;
 };
 
 export struct vertex_representation

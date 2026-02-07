@@ -51,7 +51,9 @@ export void draw_bottom_lid(vertex_representation& vr, const float diameter, con
     for (unsigned short i = 0; i < slice_count; ++i)
     {
         const float angle = static_cast<float>(i * std::numbers::pi * 2 / slice_count);
-        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, 0.f, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 });
+        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, 0.f, std::cos(angle) * diameter },
+            DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 },
+            DirectX::XMFLOAT3{0,-1,0});
     }
     for (unsigned short i = 0; i < slice_count; ++i)
     {

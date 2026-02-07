@@ -20,7 +20,9 @@ static void draw_top_lid(vertex_representation& vr, const float diameter, const 
     for (unsigned short i = 0; i < slice_count; ++i)
     {
         const float angle = static_cast<float>(i * std::numbers::pi * 2 / slice_count);
-        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, level, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 });
+        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, level, std::cos(angle) * diameter },
+            DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 },
+            DirectX::XMFLOAT3{0,1,0});
     }
     for (unsigned short i = 0; i < slice_count; ++i)
     {
@@ -38,8 +40,12 @@ static void draw_side(vertex_representation & vr , const float diameter, const f
     for (unsigned short i = 0; i < slice_count; ++i)
     {
         const float angle = static_cast<float>(i * std::numbers::pi * 2 / slice_count);
-        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * previous_diameter, level + 0.f, std::cos(angle) * previous_diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 });
-        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, level + height, std::cos(angle) * diameter }, DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 });
+        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * previous_diameter, level + 0.f, std::cos(angle) * previous_diameter },
+            DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   0 },
+            DirectX::XMFLOAT3{ std::sin(angle), 0,   std::cos(angle) });
+        vr.vertices.emplace_back(DirectX::XMFLOAT3{ std::sin(angle) * diameter, level + height, std::cos(angle) * diameter },
+            DirectX::XMFLOAT3{ std::sin(angle),   std::cos(angle),   1 },
+            DirectX::XMFLOAT3{ std::sin(angle), 0,   std::cos(angle) });
     }
     for (unsigned short i = 0; i < slice_count; ++i)
     {
