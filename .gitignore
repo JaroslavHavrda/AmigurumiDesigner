@@ -48,3 +48,7 @@ AmigurimiDesigner/AmigurimiDesigner.vcxproj.user
 AmigurimiDesigner/imgui.ini
 AmigurimiDesigner/vcpkg_installed/
 AmigurimiDesigner/x64/
+AmigurumiUnitTest/AmigurumiUnitTest.vcxproj.filters
+AmigurumiUnitTest/AmigurumiUnitTest.vcxproj.user
+AmigurumiUnitTest/vcpkg_installed/
+AmigurumiUnitTest/x64/

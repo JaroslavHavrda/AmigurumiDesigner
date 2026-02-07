@@ -3,7 +3,9 @@ module;
 
 #include <d3d11.h>
 
+#pragma warning (push)
 #include "imgui.h"
+#pragma warning (pop)
 #include <Windows.h>
 #include <wrl\client.h>
 
@@ -19,14 +21,24 @@ import D3DDeviceHolder;
 import window_procs;
 import std;
 
+export void set_imgui_flags(ImGuiConfigFlags & flags)
+{
+    flags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    flags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+}
+
 static void setup_imgui()
 {
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    set_imgui_flags(io.ConfigFlags);
 
     // Setup Dear ImGui style
     ImGui::StyleColorsLight();
+}
+
+export bool shall_resize(UINT width, UINT height)
+{
+    return width != 0 && height != 0;
 }
 
 export struct application_basics
@@ -45,7 +57,7 @@ export struct application_basics
     }
     void update_window_size()
     {
-        if (g_ResizeWidth != 0 && g_ResizeHeight != 0)
+        if (shall_resize(g_ResizeWidth, g_ResizeHeight))
         {
             target_view = std::optional<render_target_view_holder>{};
             d3dDevice.g_pd3dDeviceContext->ClearState();
