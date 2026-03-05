@@ -14,7 +14,8 @@ import std;
 
 export struct gui_wrapper
 {
-    std::array<char, 500> prescription{ '1', ',', '4', ',', '1', ',', '4'};
+    std::array<char, 500> prescription{ '5', '\n' ,'1' ,'1' ,'\n' ,'1','6','\n','2','0','\n','2','3','\n','2','5','\n','2','6','\n','2','6','\n','2','5','\n','2','3','\n','2','0','\n','1','5','\n',
+        '1','4','\n','1','2','\n','9','\n','5'};
 
     void present_using_imgui( const float height, const D3D11_TEXTURE2D_DESC& desc, const DirectX::XMFLOAT3 center, const std::string_view error)
     {

@@ -184,6 +184,7 @@
     <ClCompile Include="imgui_holder.ixx" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="hwnd_wrapper.ixx" />
+    <ClCompile Include="prescription_parser.ixx" />
     <ClCompile Include="projections.ixx" />
     <ClCompile Include="render_target_view_holder.ixx" />
     <ClCompile Include="vertex_calculations.ixx" />
